@@ -437,6 +437,40 @@ describe("parseQuestSchedule", () => {
     expect(courses[0].sections[0].instructor).toBe("Jane Q Smith-Okonkwo");
   });
 
+  it("reads a MM/DD range the ordinary way", () => {
+    const paste = [
+      "CS 135 - Designing Functional Programs",
+      "4280\t001\tLEC\tMWF 10:30AM-11:20AM\tMC 4020\tJ Smith\t09/08/2026 - 12/02/2026",
+    ].join("\n");
+    const { courses, termCode } = parseQuestSchedule(paste);
+    expect(courses[0].sections[0].startDate).toBe("2026-09-08");
+    expect(termCode).toBe("1269");
+  });
+
+  it("reads a DD/MM range when only that ordering makes a real term", () => {
+    // 15 September to 4 December. Under MM/DD the 15th would be a 15th month.
+    const paste = [
+      "CS 135 - Designing Functional Programs",
+      "4280\t001\tLEC\tMWF 10:30AM-11:20AM\tMC 4020\tJ Smith\t15/09/2026 - 04/12/2026",
+    ].join("\n");
+    const { courses, termCode } = parseQuestSchedule(paste);
+    expect(courses[0].sections[0].startDate).toBe("2026-09-15");
+    expect(courses[0].sections[0].endDate).toBe("2026-12-04");
+    expect(termCode).toBe("1269");
+  });
+
+  it("rejects a reading that would run backwards", () => {
+    // Under DD/MM this would be 9 August to 12 February — a term that ends
+    // before it starts, so the MM/DD reading has to be the right one.
+    const paste = [
+      "CS 135 - Designing Functional Programs",
+      "4280\t001\tLEC\tMWF 10:30AM-11:20AM\tMC 4020\tJ Smith\t09/08/2026 - 12/02/2026",
+    ].join("\n");
+    const { courses } = parseQuestSchedule(paste);
+    expect(courses[0].sections[0].startDate).toBe("2026-09-08");
+    expect(courses[0].sections[0].endDate).toBe("2026-12-02");
+  });
+
   it("derives a winter term code from a January paste", () => {
     const paste = [
       "CS 136 - Elementary Algorithm Design",

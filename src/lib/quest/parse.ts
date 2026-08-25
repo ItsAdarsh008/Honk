@@ -400,14 +400,52 @@ function toIso(month: string, day: string, year: string): string {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+function daysBetween(startIso: string, endIso: string): number {
+  return (Date.parse(endIso) - Date.parse(startIso)) / 86_400_000;
+}
+
+/** A term runs a few months. Anything outside this is the wrong reading. */
+function plausibleTerm(startIso: string, endIso: string): boolean {
+  const span = daysBetween(startIso, endIso);
+  return span >= 0 && span <= 250;
+}
+
+/**
+ * Read a Quest date range.
+ *
+ * Quest renders dates in the account's own format, so `09/08/2026` is
+ * 8 September to a student set to MM/DD and 9 August to one set to DD/MM.
+ * Guessing wrong is not a cosmetic error: the term code is derived from these
+ * dates, and sections are keyed on (term_code, class_number), so a misread
+ * date would file two students in the same lecture under different terms and
+ * they would never match.
+ *
+ * Both readings are tried and the one that produces a plausible term wins.
+ * A range like `09/08/2026 - 12/02/2026` is only ordered under MM/DD, which
+ * settles it; a genuinely ambiguous range falls back to MM/DD, Quest's default.
+ */
 function parseDates(raw: string | null): { startDate: string | null; endDate: string | null } {
   if (!raw) return { startDate: null, endDate: null };
   const m = DATE_RANGE_RE.exec(raw);
   if (!m) return { startDate: null, endDate: null };
-  return {
-    startDate: toIso(m[1], m[2], m[3]),
-    endDate: toIso(m[4], m[5], m[6]),
-  };
+
+  const monthFirst = { startDate: toIso(m[1], m[2], m[3]), endDate: toIso(m[4], m[5], m[6]) };
+  const dayFirst = { startDate: toIso(m[2], m[1], m[3]), endDate: toIso(m[5], m[4], m[6]) };
+
+  const monthFirstPossible = Number(m[1]) <= 12 && Number(m[4]) <= 12;
+  const dayFirstPossible = Number(m[2]) <= 12 && Number(m[5]) <= 12;
+
+  // A component above 12 can only be a day, which decides it outright.
+  if (monthFirstPossible && !dayFirstPossible) return monthFirst;
+  if (dayFirstPossible && !monthFirstPossible) return dayFirst;
+
+  // Both readable as dates: prefer the one that describes an actual term.
+  const monthFirstOk = plausibleTerm(monthFirst.startDate, monthFirst.endDate);
+  const dayFirstOk = plausibleTerm(dayFirst.startDate, dayFirst.endDate);
+  if (monthFirstOk && !dayFirstOk) return monthFirst;
+  if (dayFirstOk && !monthFirstOk) return dayFirst;
+
+  return monthFirst;
 }
 
 function meetingsFrom(daysTimes: string | null, room: string | null): ParsedMeeting[] {
