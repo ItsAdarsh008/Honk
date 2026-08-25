@@ -11,15 +11,15 @@ const MESSAGES: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
-  const unavailable = requireDatabase();
-  if (unavailable) return unavailable;
-
   const body = await readJson<{ email?: string; code?: string }>(request);
   const email = normalizeEmail(body?.email ?? "");
   const code = (body?.code ?? "").replace(/\D/g, "");
 
   if (!email) return fail("That isn't a @uwaterloo.ca address.");
   if (code.length !== 6) return fail("A code is six digits.");
+
+  const unavailable = requireDatabase();
+  if (unavailable) return unavailable;
 
   const result = await verifyLoginCode(email, code);
   if (!result.ok) {

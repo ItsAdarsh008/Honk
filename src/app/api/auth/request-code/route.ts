@@ -11,14 +11,16 @@ export const runtime = "nodejs";
  * back either way, so this cannot be used to test who has signed up.
  */
 export async function POST(request: Request) {
-  const unavailable = requireDatabase();
-  if (unavailable) return unavailable;
-
+  // Address check first: it is pure, and it should say the same thing whether
+  // or not persistence happens to be configured.
   const body = await readJson<{ email?: string }>(request);
   const email = normalizeEmail(body?.email ?? "");
   if (!email) {
     return fail("Honk is Waterloo-only, so this needs to be a @uwaterloo.ca address.");
   }
+
+  const unavailable = requireDatabase();
+  if (unavailable) return unavailable;
 
   const ip = clientIp(request);
   const limit = await checkRateLimit(email, ip);
