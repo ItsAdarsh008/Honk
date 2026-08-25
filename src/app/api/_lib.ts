@@ -20,7 +20,7 @@ export function clientIp(request: Request): string | null {
 /** Every route degrades to a plain message rather than a stack trace. */
 export function requireDatabase() {
   if (hasDatabase()) return null;
-  return fail("Honk isn't connected to a database yet, so this can't be saved.", 503);
+  return fail("Honk isn't connected to a database yet, so accounts are switched off.", 503);
 }
 
 export async function readJson<T>(request: Request): Promise<T | null> {

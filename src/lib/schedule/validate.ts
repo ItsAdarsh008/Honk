@@ -32,9 +32,22 @@ function str(value: unknown, max: number): string | null {
   return trimmed;
 }
 
-function nullableStr(value: unknown, max: number): string | null {
+/**
+ * Absent is fine; present-but-wrong is not.
+ *
+ * These fields land in rows other students share, so an over-long or
+ * wrong-typed value is refused rather than quietly nulled — a payload that has
+ * been tampered with should fail loudly, not write half of itself.
+ */
+const INVALID = Symbol("invalid");
+
+function optionalStr(value: unknown, max: number): string | null | typeof INVALID {
   if (value === null || value === undefined) return null;
-  return str(value, max);
+  if (typeof value !== "string") return INVALID;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > max) return INVALID;
+  return trimmed;
 }
 
 function int(value: unknown, min: number, max: number): number | null {
@@ -101,8 +114,11 @@ export function validateSchedule(input: unknown): ValidationResult {
         return { ok: false, error: "A section component looked wrong." };
       }
 
-      const startDate = nullableStr(s.startDate, 10);
-      const endDate = nullableStr(s.endDate, 10);
+      const startDate = optionalStr(s.startDate, 10);
+      const endDate = optionalStr(s.endDate, 10);
+      if (startDate === INVALID || endDate === INVALID) {
+        return { ok: false, error: "A date looked wrong." };
+      }
       if (startDate && !ISO_DATE_RE.test(startDate)) return { ok: false, error: "A date looked wrong." };
       if (endDate && !ISO_DATE_RE.test(endDate)) return { ok: false, error: "A date looked wrong." };
 
@@ -123,29 +139,32 @@ export function validateSchedule(input: unknown): ValidationResult {
         if (weekday === null || startMin === null || endMin === null || endMin <= startMin) {
           return { ok: false, error: "A meeting time looked wrong." };
         }
-        meetings.push({
-          weekday,
-          startMin,
-          endMin,
-          location: nullableStr(m.location, 40),
-        });
+        const location = optionalStr(m.location, 40);
+        if (location === INVALID) return { ok: false, error: "A room looked wrong." };
+        meetings.push({ weekday, startMin, endMin, location });
       }
+
+      const instructor = optionalStr(s.instructor, 80);
+      if (instructor === INVALID) return { ok: false, error: "An instructor name looked wrong." };
 
       sections.push({
         classNumber,
         sectionCode,
         component,
-        instructor: nullableStr(s.instructor, 80),
+        instructor,
         startDate,
         endDate,
         meetings,
       });
     }
 
+    const title = optionalStr(c.title, 120);
+    if (title === INVALID) return { ok: false, error: "A course title looked wrong." };
+
     courses.push({
       subject,
       catalog,
-      title: nullableStr(c.title, 120),
+      title,
       status: "enrolled",
       sections,
     });

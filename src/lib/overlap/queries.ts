@@ -412,6 +412,29 @@ export async function getVisibleProfile(
   };
 }
 
+/**
+ * Look up a profile by handle, subject to exactly the same checks as
+ * `getVisibleProfile`. The handle is a public identifier, so resolving it must
+ * not be a way around discoverability or a block.
+ */
+export async function getProfileByHandle(
+  viewerId: string,
+  handle: string,
+  db: Db = getDb(),
+): Promise<(Classmate & { sharedSectionCount: number }) | null> {
+  const normalized = handle.trim().toLowerCase().replace(/^@/, "");
+  if (!/^[a-z0-9_]{2,20}$/.test(normalized)) return null;
+
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.handle, normalized), isNotNull(users.verifiedAt)))
+    .limit(1);
+  if (!row) return null;
+
+  return getVisibleProfile(viewerId, row.id, db);
+}
+
 /* ------------------------------------------------------------------ *
  * Shared gaps — accepted friends only
  * ------------------------------------------------------------------ */
