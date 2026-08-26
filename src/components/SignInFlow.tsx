@@ -3,8 +3,9 @@
 /**
  * Sign in: email, then code, then a name if this is the first time.
  *
- * The schedule pasted before signing in is held in sessionStorage and saved as
- * soon as the session exists, so the paste is never lost to the detour.
+ * The schedule pasted before signing in is held in the browser and saved as
+ * soon as the session exists, so the paste is never lost to the detour — even
+ * if the code takes half an hour and the tab gets closed in the meantime.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -51,7 +52,7 @@ export function SignInFlow() {
         });
         if (response.ok) clearPending();
       } catch {
-        // The schedule stays in sessionStorage; /home offers to paste again.
+        // The schedule stays in local storage; /home offers to paste again.
       }
     }
     router.push("/home");
@@ -297,12 +298,14 @@ export function SignInFlow() {
                 &ldquo;not spam&rdquo; fixes it for everyone after you.
               </p>
               <p>
-                Give it a minute. It normally arrives in seconds, but a first message to a
-                university address can be held briefly.
+                <strong className="font-semibold text-[var(--ink)]">It can take a while.</strong>{" "}
+                Usually seconds, but Waterloo sometimes holds mail from a new sender for
+                much longer. The code is good for an hour, so a slow one still works.
               </p>
               <p>
-                Still nothing? Send another below, or use a different address — the code
-                works from any device.
+                You can close this tab. Your pasted schedule is saved in this browser and
+                goes in as soon as you sign in — come back with the code whenever it turns
+                up.
               </p>
             </div>
           </details>
@@ -335,8 +338,8 @@ export function SignInFlow() {
 
           {hasPending && (
             <p className="rounded-[10px] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2.5 text-[13px] text-[var(--ink-soft)]">
-              Your pasted schedule is still held in this tab. Leave it open and it saves
-              the moment you sign in.
+              Your pasted schedule is saved in this browser. Come back whenever — it goes
+              in the moment you sign in.
             </p>
           )}
 

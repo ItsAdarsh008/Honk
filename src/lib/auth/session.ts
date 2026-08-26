@@ -13,7 +13,24 @@ import { getDb, type Db } from "../db";
 import { loginCodes, sessions, users, type User } from "../db/schema";
 
 export const SESSION_COOKIE = "honk_session";
-export const CODE_TTL_MINUTES = 10;
+/**
+ * How long a code stays good.
+ *
+ * Was 10 minutes, which is the ordinary choice and was wrong here. Waterloo's
+ * gateway throttles mail from a domain with no reputation: the first codes
+ * Honk ever sent were accepted and then took somewhere between two minutes and
+ * two hours to appear. A code that expires in ten is dead on arrival, so
+ * delivery succeeding and sign-in working were two different problems and only
+ * the first was solved.
+ *
+ * An hour costs almost nothing in security. Requesting a code invalidates the
+ * previous one, so exactly one is live at a time, and `MAX_CODE_ATTEMPTS` caps
+ * guesses at five against it — the brute-force surface is set by that cap, not
+ * by the clock. What a longer window really costs is a valid code sitting in a
+ * mailbox for longer, and anyone who can read that mailbox could request a
+ * fresh code anyway.
+ */
+export const CODE_TTL_MINUTES = 60;
 export const MAX_CODE_ATTEMPTS = 5;
 export const SESSION_TTL_DAYS = 60;
 

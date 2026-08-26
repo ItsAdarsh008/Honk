@@ -1,5 +1,7 @@
 import "server-only";
 import { siteUrl } from "../site";
+import { formatWait } from "../wait";
+import { CODE_TTL_MINUTES } from "./session";
 
 /**
  * Sending sign-in codes.
@@ -10,6 +12,11 @@ import { siteUrl } from "../site";
  */
 
 const FROM = process.env.EMAIL_FROM ?? "Honk <onboarding@resend.dev>";
+
+/** "about an hour", from the one constant, so the copy cannot drift from it. */
+function lifetime(): string {
+  return formatWait(CODE_TTL_MINUTES) ?? `${CODE_TTL_MINUTES} minutes`;
+}
 
 export type DeliveryMode = "email" | "console";
 
@@ -62,7 +69,7 @@ export async function sendLoginCode(email: string, code: string): Promise<Delive
   if (!process.env.RESEND_API_KEY) {
     // eslint-disable-next-line no-console
     console.log(
-      `\n  Honk sign-in code for ${email}: ${code}\n  (expires in 10 minutes — set RESEND_API_KEY to send this by email instead)\n`,
+      `\n  Honk sign-in code for ${email}: ${code}\n  (expires in ${lifetime()} — set RESEND_API_KEY to send this by email instead)\n`,
     );
     return { mode: "console", ok: true };
   }
@@ -95,7 +102,7 @@ function codeEmailText(code: string, site: string, host: string): string {
     `Your Honk sign-in code is ${code}`,
     "",
     `Enter it at ${site} to finish signing in.`,
-    "It expires in 10 minutes and works once.",
+    `It expires in ${lifetime()} and works once.`,
     "",
     "You are getting this because someone entered this address on Honk, the",
     "class-schedule app for University of Waterloo students. If that was not",
@@ -116,7 +123,7 @@ function codeEmailHtml(code: string, site: string, host: string): string {
           <p style="margin:0 0 20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:34px;letter-spacing:6px;color:#33322C;">${code}</p>
           <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#33322C;">
             Enter it at <a href="${site}" style="color:#33322C;">${host}</a> to finish signing in.
-            It expires in 10 minutes and works once.
+            It expires in ${lifetime()} and works once.
           </p>
           <p style="margin:0;font-size:14px;line-height:1.5;color:#75726A;">
             You are getting this because someone entered this address on Honk, the
