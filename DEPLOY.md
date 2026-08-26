@@ -73,6 +73,19 @@ Microsoft's — `security.microsoft.com/quarantine` will show nothing.
 - **DMARC went to `p=quarantine`** with strict alignment. Only Resend sends
   from this subdomain and it aligns on both SPF and DKIM, so nothing legitimate
   is at risk, and Gmail expects progression past `p=none`.
+- **A late code still works.** This was the one that mattered. Codes expired
+  after 10 minutes, and the one code that did get through took somewhere
+  between two minutes and two hours to appear — so every deliverability fix
+  above could have worked perfectly while sign-in still failed, because the
+  code was dead on arrival. The lifetime is now an hour. It costs almost
+  nothing: requesting a code invalidates the previous one, so exactly one is
+  ever live, and `MAX_CODE_ATTEMPTS` caps guesses at five against it. The
+  brute-force surface is set by that cap, not by the clock.
+- **The pasted schedule survives closing the tab.** It moved from
+  `sessionStorage` to `localStorage`. Somebody waiting half an hour for a code
+  will close the tab, and making them paste again afterwards is the most
+  expensive possible moment to lose them. It still clears the instant the
+  schedule saves.
 - **The sign-in screen now has a "Didn't get it?" panel** telling students to
   check spam and mark the message *not spam*. That last part matters more than
   it sounds: recipient engagement is the strongest reputation signal there is,
