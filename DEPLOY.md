@@ -17,15 +17,22 @@ how to check it.
 | Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
 | **Sending domain in Resend** | ❌ **the one hard blocker** |
 | `DATABASE_URL` in Vercel | ✅ set for Production and Preview |
+| `RESEND_API_KEY` in Vercel | ✅ set — but delivers only to your own address until the domain verifies |
+| `NEXT_PUBLIC_SITE_URL` | ✅ pinned to `honk-loo.vercel.app` |
 
 ---
 
 ## What is left
 
-**One thing: verify a sending domain in Resend.** Everything else in this
-section has been done — the code is pushed, `DATABASE_URL` is set for
-Production and Preview, the app is deployed at `honk-loo.vercel.app`, and the
-smoke test passes 20/20.
+**One thing: verify a sending domain in Resend.** Everything else is done — the
+code is pushed, `DATABASE_URL`, `RESEND_API_KEY` and `NEXT_PUBLIC_SITE_URL` are
+all set for Production and Preview, the app is live at `honk-loo.vercel.app`,
+and the smoke test passes 20/20.
+
+The key being set means sign-in now works **for you**. `EMAIL_FROM` is unset,
+so Resend falls back to `onboarding@resend.dev`, which delivers only to the
+address that owns the Resend account. Everyone else gets a 200 and no email.
+Do not share the URL until the step below is done.
 
 ### Verify a sending domain in Resend
 
@@ -54,11 +61,9 @@ vercel dns ls adarshthoduvakkal.com          # confirm they are there
    not the content, and the SES region in the MX record varies.
 
 3. Wait for the status to read **Verified** — usually minutes
-4. Add the two variables to Vercel, for Production **and** Preview:
+4. `RESEND_API_KEY` is already in Vercel. Add `EMAIL_FROM` alongside it, for Production **and** Preview:
 
 ```bash
-vercel env add RESEND_API_KEY production     # paste the key when prompted
-vercel env add RESEND_API_KEY preview
 vercel env add EMAIL_FROM production         # Honk <hello@send.adarshthoduvakkal.com>
 vercel env add EMAIL_FROM preview
 ```
