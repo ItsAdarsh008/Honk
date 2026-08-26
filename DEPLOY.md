@@ -11,37 +11,23 @@ how to check it.
 |---|---|
 | Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
 | Privacy integration tests | ✅ 12/12 passing against the live database |
-| Full suite | ✅ 149 tests, typecheck and build clean |
+| Deployed to Vercel | ✅ live at `honk-one.vercel.app`, smoke test 21/21 |
+| Full suite | ✅ 155 tests, typecheck and build clean |
 | Vercel framework preset | ✅ pinned in `vercel.json` |
 | Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
 | **Sending domain in Resend** | ❌ **the one hard blocker** |
-| `DATABASE_URL` in Vercel | ❌ not set yet |
+| `DATABASE_URL` in Vercel | ✅ set for Production and Preview |
 
 ---
 
 ## What is left
 
-Five things, in order. Everything up to the smoke test is about ten minutes
-plus DNS propagation.
+**One thing: verify a sending domain in Resend.** Everything else in this
+section has been done — the code is pushed, `DATABASE_URL` is set for
+Production and Preview, the app is deployed at `honk-one.vercel.app`, and the
+smoke test passes 21/21.
 
-### 1. Push
-
-```bash
-git push
-```
-
-### 2. Put `DATABASE_URL` into Vercel
-
-The value is already on your machine, in `.env.local`, pulled from Neon. Copy
-the `DATABASE_URL` line — the one with `-pooler` in the hostname, which is the
-pooled connection serverless needs.
-
-Vercel → Settings → Environment Variables → add `DATABASE_URL` for
-**Production and Preview**.
-
-Do not commit it. `.env.local` is gitignored and should stay that way.
-
-### 3. Verify a sending domain in Resend
+### Verify a sending domain in Resend
 
 **This is the only thing standing between you and other people being able to
 sign in.** Until it is done, Resend delivers only to the address that owns the
@@ -53,34 +39,48 @@ rather than the apex:
 1. Resend → Domains → Add `send.yourdomain.com`
 2. Add the DKIM and SPF records it gives you at whoever runs your DNS
 3. Wait for the status to read **Verified** — usually minutes
-4. Vercel → Environment Variables:
-   - `RESEND_API_KEY` = your Resend key
-   - `EMAIL_FROM` = `Honk <hello@send.yourdomain.com>`
+4. Add the two variables to Vercel, for Production **and** Preview:
+
+```bash
+vercel env add RESEND_API_KEY production     # paste the key when prompted
+vercel env add RESEND_API_KEY preview
+vercel env add EMAIL_FROM production         # Honk <hello@send.yourdomain.com>
+vercel env add EMAIL_FROM preview
+```
+
+5. Redeploy, because environment variables are read at build time:
+
+```bash
+vercel redeploy $(vercel ls honk | grep Production | head -1 | grep -o 'https://[^ ]*')
+```
+
+6. Re-run the smoke test and then sign in with a Waterloo address **that is not
+   yours** — the one check no script can do.
 
 A subdomain, not the apex, for two reasons. It keeps Honk's sending reputation
 separate from your personal mail, so a bad send cannot hurt it. And it avoids
 touching the apex SPF record, which is what would break existing mail on that
 domain if you already send or receive there.
 
-### 4. Redeploy
+### Paste values without quotes
 
-Environment variables are read at build time, so add them first and then
-trigger a fresh deploy.
+`.env.local` wraps values in double quotes and dotenv strips them; a hosting
+dashboard does not. A `DATABASE_URL` pasted with its quotes intact reached
+`postgres()` as `"postgresql://..."` and threw `TypeError: Invalid URL` on the
+first query — which surfaced as a bare 500 on sign-in with nothing on the page
+to say why. `normalizeDatabaseUrl` in `src/lib/db/url.ts` now strips a matched
+pair of surrounding quotes, so this particular mistake is survivable, but paste
+the bare value anyway.
 
-You can leave `NEXT_PUBLIC_SITE_URL` unset. `siteUrl()` falls back to Vercel's
-own `VERCEL_PROJECT_PRODUCTION_URL` and `VERCEL_URL`, so link previews resolve
-correctly on `*.vercel.app` with nothing configured. Set it only when you point
-a custom domain at the project.
-
-### 5. Check it
+### Checking it
 
 ```bash
-npm run smoke -- https://your-honk-url
+npm run smoke -- https://honk-one.vercel.app
 ```
 
-21 automated checks. Then the four manual ones under "What the script cannot check" — the first is
-signing in with a Waterloo address **that is not yours**, which is the only
-way to catch a Resend problem.
+21 automated checks, exits non-zero if any fail. Then the four manual ones
+under "What the script cannot check" — the first is signing in with a Waterloo
+address **that is not yours**, which is the only way to catch a Resend problem.
 
 ---
 
@@ -117,6 +117,14 @@ It also tolerates being written wrong: a bare `honk.vercel.app` with no scheme,
 a trailing slash, or an empty string all normalise instead of throwing. That
 used to fail the whole build with `TypeError: Invalid URL`.
 
+`DATABASE_URL` now tolerates the same mistake in its own way. A value copied
+out of `.env.local` carries the double quotes that file uses; dotenv strips
+them locally, a hosting dashboard does not, and `postgres()` threw
+`TypeError: Invalid URL` on the first query — a bare 500 on sign-in with
+nothing on the page to explain it. `normalizeDatabaseUrl` in
+`src/lib/db/url.ts` strips a matched pair of surrounding quotes and trims
+whitespace. Paste the bare value anyway.
+
 ---
 
 ### The database
@@ -151,15 +159,18 @@ encode the SPEC section 6 rules — what a non-friend, a hidden user and a
 blocked user cannot see. **They have now been run against real Postgres and
 all pass**, so the guarantees are verified rather than merely asserted.
 
-With `.env.local` present they run as part of the normal suite:
+They are skipped unless `DATABASE_URL` is in the environment, and vitest does
+not read `.env.local`, so pass it explicitly:
 
 ```bash
-npm test        # 149 tests: 137 unit + 12 integration
+npm test                                   # 143 unit tests, 12 integration skipped
+DATABASE_URL=postgres://... npm test       # all 155
 ```
 
-Run them against a **branch or scratch database, never production once real
-students are on it.** They create and delete real users, and clean up by
-deleting sections in term `9999` and courses with subject `ZZ`.
+That they are opt-in is deliberate. They create and delete real users, so
+point them at a **branch or scratch database, never production once real
+students are on it.** They clean up by deleting sections in term `9999` and
+courses with subject `ZZ`.
 
 ---
 
@@ -224,7 +235,7 @@ on.
 Most of this is automated. Point the script at the deployment:
 
 ```bash
-npm run smoke -- https://your-honk-url
+npm run smoke -- https://honk-one.vercel.app
 ```
 
 It runs 21 checks and exits non-zero if any fail, so it can gate a deploy in
@@ -301,6 +312,9 @@ on it:
 - **Email delivery has never been exercised.** The console path is confirmed
   working (a code is issued and printed), but no mail has been sent through
   Resend. This is the one remaining hard blocker — see "What is left" above.
+- ~~The deploy has never been exercised end to end.~~ **Done** — the app is
+  live at `honk-one.vercel.app` with `DATABASE_URL` wired, and the smoke test
+  passes 21/21 against it.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
 
 Next was bumped 15.5.4 → 15.5.9 for a React Server Components CVE, and the full

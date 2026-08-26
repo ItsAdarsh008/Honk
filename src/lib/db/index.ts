@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { databaseUrl } from "./url";
 
 /**
  * A single lazily-created connection pool. Next.js reloads modules in dev, so
@@ -11,7 +12,7 @@ const globalForDb = globalThis as unknown as {
 };
 
 function connectionString(): string {
-  const url = process.env.DATABASE_URL;
+  const url = databaseUrl();
   if (!url) {
     throw new Error(
       "DATABASE_URL is not set. Copy .env.example to .env.local and point it at a Postgres database.",
@@ -38,7 +39,7 @@ export function getDb(): Db {
 
 /** True when persistence is configured at all. Screens degrade rather than crash. */
 export function hasDatabase(): boolean {
-  return Boolean(process.env.DATABASE_URL);
+  return databaseUrl() !== null;
 }
 
 export { schema };
