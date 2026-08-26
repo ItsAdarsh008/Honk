@@ -33,9 +33,20 @@ export const users = pgTable(
     /** Set once the discoverability prompt has been shown and answered. */
     privacyPromptedAt: timestamp("privacy_prompted_at", { withTimezone: true }),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /**
+     * Entra object id, when the account signed in with Waterloo rather than a
+     * code. Immutable per user per tenant, which is why identity keys on it
+     * and not on the address: a `preferred_username` can change, this cannot.
+     * Null for accounts that only ever used an email code.
+     */
+    entraOid: text("entra_oid"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("users_email_key").on(t.email), unique("users_handle_key").on(t.handle)],
+  (t) => [
+    unique("users_email_key").on(t.email),
+    unique("users_handle_key").on(t.handle),
+    unique("users_entra_oid_key").on(t.entraOid),
+  ],
 );
 
 /* ------------------------------------------------------------------ *

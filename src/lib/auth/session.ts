@@ -306,3 +306,57 @@ export async function setProfile(
 export function hasProfile(user: User): boolean {
   return Boolean(user.displayName && user.handle);
 }
+
+/* ------------------------------------------------------------------ *
+ * Entra sign-in
+ * ------------------------------------------------------------------ */
+
+/**
+ * Find or create the account behind a verified Waterloo token.
+ *
+ * Three cases, in order. A known `oid` is the account, full stop. Otherwise an
+ * existing row with the same address is adopted and stamped — that is what
+ * lets somebody who signed up with an email code switch to signing in with
+ * Waterloo without ending up with two accounts and half a schedule in each.
+ * Failing both, it is a new user.
+ *
+ * `verifiedAt` is set unconditionally: Waterloo's own directory vouching for
+ * the account is a stronger proof than a code read out of a mailbox.
+ */
+export async function findOrCreateEntraUser(
+  identity: { oid: string; email: string; name: string | null },
+  db: Db = getDb(),
+): Promise<{ user: User; isNewUser: boolean }> {
+  const [byOid] = await db
+    .select()
+    .from(users)
+    .where(eq(users.entraOid, identity.oid))
+    .limit(1);
+  if (byOid) return { user: byOid, isNewUser: false };
+
+  const [byEmail] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, identity.email))
+    .limit(1);
+  if (byEmail) {
+    const [adopted] = await db
+      .update(users)
+      .set({ entraOid: identity.oid, verifiedAt: byEmail.verifiedAt ?? new Date() })
+      .where(eq(users.id, byEmail.id))
+      .returning();
+    return { user: adopted, isNewUser: false };
+  }
+
+  const [created] = await db
+    .insert(users)
+    .values({
+      email: identity.email,
+      entraOid: identity.oid,
+      // Entra hands us a real name; it is still editable on the profile step.
+      displayName: identity.name,
+      verifiedAt: new Date(),
+    })
+    .returning();
+  return { user: created, isNewUser: true };
+}
