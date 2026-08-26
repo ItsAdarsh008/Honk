@@ -15,6 +15,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "drizzle-orm": "^0.44.5",
     "next": "15.5.9",
     "postgres": "^3.4.7",
