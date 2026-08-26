@@ -33,18 +33,33 @@ smoke test passes 21/21.
 sign in.** Until it is done, Resend delivers only to the address that owns the
 Resend account, and it fails silently — the API returns 200 either way.
 
-You already own a domain, so this costs nothing. Use a **subdomain** of it
-rather than the apex:
+You already own two domains, both registered at Vercel and on Vercel
+nameservers — `adarshthoduvakkal.com` and `origintutoring.com`. Use a
+**subdomain**, not the apex, and prefer the personal domain: `origintutoring.com`
+is a business that sends real mail, and the point of a subdomain is that a bad
+send from Honk cannot touch it.
 
-1. Resend → Domains → Add `send.yourdomain.com`
-2. Add the DKIM and SPF records it gives you at whoever runs your DNS
+1. Resend → Domains → Add `send.adarshthoduvakkal.com`
+2. Resend hands you a DKIM `TXT`, an SPF `TXT` and usually a `MX`. Because the
+   nameservers are Vercel's, they go in from here rather than a DNS dashboard:
+
+```bash
+vercel dns add adarshthoduvakkal.com resend._domainkey.send TXT "p=MIGf..."
+vercel dns add adarshthoduvakkal.com send TXT "v=spf1 include:amazonses.com ~all"
+vercel dns add adarshthoduvakkal.com send MX feedback-smtp.us-east-1.amazonses.com 10
+vercel dns ls adarshthoduvakkal.com          # confirm they are there
+```
+
+   Copy the values Resend actually shows you — the ones above are the shape,
+   not the content, and the SES region in the MX record varies.
+
 3. Wait for the status to read **Verified** — usually minutes
 4. Add the two variables to Vercel, for Production **and** Preview:
 
 ```bash
 vercel env add RESEND_API_KEY production     # paste the key when prompted
 vercel env add RESEND_API_KEY preview
-vercel env add EMAIL_FROM production         # Honk <hello@send.yourdomain.com>
+vercel env add EMAIL_FROM production         # Honk <hello@send.adarshthoduvakkal.com>
 vercel env add EMAIL_FROM preview
 ```
 
@@ -57,10 +72,8 @@ vercel redeploy $(vercel ls honk | grep Production | head -1 | grep -o 'https://
 6. Re-run the smoke test and then sign in with a Waterloo address **that is not
    yours** — the one check no script can do.
 
-A subdomain, not the apex, for two reasons. It keeps Honk's sending reputation
-separate from your personal mail, so a bad send cannot hurt it. And it avoids
-touching the apex SPF record, which is what would break existing mail on that
-domain if you already send or receive there.
+The subdomain also keeps you off the apex SPF record, which is the record that
+would break existing mail on a domain you already send or receive from.
 
 ### Paste values without quotes
 
@@ -93,7 +106,7 @@ address **that is not yours**, which is the only way to catch a Resend problem.
 | A Postgres database | Everything except the paste flow | ✅ Neon free tier |
 | A Vercel account | Hosting | free tier is enough |
 | A Resend account | Sign-in codes | free tier is enough |
-| A domain you control | **Required to email anyone but yourself** | you already own one — use a subdomain |
+| A domain you control | **Required to email anyone but yourself** | you already own two — use a subdomain |
 
 Node 20 or newer. The app was built and tested on Node 24.
 
