@@ -1,27 +1,105 @@
 # Deploying Honk
 
-Getting the app as it stands today onto the internet and working end to end.
-Roughly 30 minutes, most of it waiting on DNS.
-
-Read [The thing most likely to block you](#the-thing-most-likely-to-block-you)
-before you start. It is not the database.
+Most of the setup is done. This is what is left, what is already standing, and
+how to check it.
 
 ---
 
-## 1. What you need
+## Status
+
+| | State |
+|---|---|
+| Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
+| Privacy integration tests | ✅ 12/12 passing against the live database |
+| Full suite | ✅ 149 tests, typecheck and build clean |
+| Vercel framework preset | ✅ pinned in `vercel.json` |
+| Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
+| **Sending domain in Resend** | ❌ **the one hard blocker** |
+| `DATABASE_URL` in Vercel | ❌ not set yet |
+
+---
+
+## What is left
+
+Five things, in order. Everything up to the smoke test is about ten minutes
+plus DNS propagation.
+
+### 1. Push
+
+```bash
+git push
+```
+
+### 2. Put `DATABASE_URL` into Vercel
+
+The value is already on your machine, in `.env.local`, pulled from Neon. Copy
+the `DATABASE_URL` line — the one with `-pooler` in the hostname, which is the
+pooled connection serverless needs.
+
+Vercel → Settings → Environment Variables → add `DATABASE_URL` for
+**Production and Preview**.
+
+Do not commit it. `.env.local` is gitignored and should stay that way.
+
+### 3. Verify a sending domain in Resend
+
+**This is the only thing standing between you and other people being able to
+sign in.** Until it is done, Resend delivers only to the address that owns the
+Resend account, and it fails silently — the API returns 200 either way.
+
+You already own a domain, so this costs nothing. Use a **subdomain** of it
+rather than the apex:
+
+1. Resend → Domains → Add `send.yourdomain.com`
+2. Add the DKIM and SPF records it gives you at whoever runs your DNS
+3. Wait for the status to read **Verified** — usually minutes
+4. Vercel → Environment Variables:
+   - `RESEND_API_KEY` = your Resend key
+   - `EMAIL_FROM` = `Honk <hello@send.yourdomain.com>`
+
+A subdomain, not the apex, for two reasons. It keeps Honk's sending reputation
+separate from your personal mail, so a bad send cannot hurt it. And it avoids
+touching the apex SPF record, which is what would break existing mail on that
+domain if you already send or receive there.
+
+### 4. Redeploy
+
+Environment variables are read at build time, so add them first and then
+trigger a fresh deploy.
+
+You can leave `NEXT_PUBLIC_SITE_URL` unset. `siteUrl()` falls back to Vercel's
+own `VERCEL_PROJECT_PRODUCTION_URL` and `VERCEL_URL`, so link previews resolve
+correctly on `*.vercel.app` with nothing configured. Set it only when you point
+a custom domain at the project.
+
+### 5. Check it
+
+```bash
+npm run smoke -- https://your-honk-url
+```
+
+21 automated checks. Then the four manual ones under "What the script cannot check" — the first is
+signing in with a Waterloo address **that is not yours**, which is the only
+way to catch a Resend problem.
+
+---
+
+## Already done — for reference
+
+### What you need
 
 | | Why | Cost |
 |---|---|---|
-| A Postgres database | Everything except the paste flow | Neon free tier is enough |
-| A Vercel account | Hosting | Free tier is enough |
-| A Resend account | Sign-in codes | Free tier is enough |
-| A domain you control | **Required to email anyone but yourself** | ~$15/year |
+| A Postgres database | Everything except the paste flow | ✅ Neon free tier |
+| A Vercel account | Hosting | free tier is enough |
+| A Resend account | Sign-in codes | free tier is enough |
+| A domain you control | **Required to email anyone but yourself** | you already own one — use a subdomain |
 
 Node 20 or newer. The app was built and tested on Node 24.
 
 ---
 
-## 2. Environment variables
+### Environment variables
 
 These four are everything the code reads:
 
@@ -30,14 +108,18 @@ These four are everything the code reads:
 | `DATABASE_URL` | **Yes** | Pasting still works; accounts, saving and every screen behind sign-in return a plain "accounts are switched off" message rather than an error |
 | `RESEND_API_KEY` | **Yes in production** | Codes print to the **server console** instead of being emailed — fine locally, useless once deployed |
 | `EMAIL_FROM` | Recommended | Falls back to `Honk <onboarding@resend.dev>`, which can only send to your own address |
-| `NEXT_PUBLIC_SITE_URL` | Recommended | Falls back to `http://localhost:3000`, which breaks link previews in iMessage and Instagram |
+| `NEXT_PUBLIC_SITE_URL` | **No** | Falls back to Vercel's own `VERCEL_PROJECT_PRODUCTION_URL`, then `VERCEL_URL`, then localhost. On Vercel it resolves correctly unset — set it only for a custom domain |
 
 `NEXT_PUBLIC_SITE_URL` is the only one exposed to the browser, and it holds
 nothing secret. The Resend key is server-only and must stay that way.
 
+It also tolerates being written wrong: a bare `honk.vercel.app` with no scheme,
+a trailing slash, or an empty string all normalise instead of throwing. That
+used to fail the whole build with `TypeError: Invalid URL`.
+
 ---
 
-## 3. The database
+### The database
 
 **Already done for this project.** A Neon project named `honk` exists, `.neon`
 in the repo root pins the org and project ids, and `npm run db:push` has been
@@ -81,24 +163,37 @@ deleting sections in term `9999` and courses with subject `ZZ`.
 
 ---
 
-## 4. Email — the thing most likely to block you
+### Email
 
 Resend will only deliver to **your own verified address** until you verify a
 sending domain. Skip this and the deploy will look completely fine to you and
 be impossible for anyone else to sign into. There is no error — the code sends,
 and nobody receives it.
 
-1. Add your domain in Resend → Domains.
-2. Add the DKIM and SPF records it gives you to your DNS. Propagation is
-   usually minutes, occasionally hours.
+**You do not need to buy a domain for this.** A subdomain of one you already
+own works, and is the better choice anyway.
+
+1. Add `send.yourdomain.com` in Resend → Domains.
+2. Add the DKIM and SPF records it gives you at whoever runs your DNS.
+   Propagation is usually minutes, occasionally hours.
 3. Wait for the domain to read **Verified**.
-4. Set `EMAIL_FROM` to an address at that domain, e.g. `Honk <hello@honk.app>`.
+4. Set `EMAIL_FROM` to an address there, e.g.
+   `Honk <hello@send.yourdomain.com>`.
+
+Use a subdomain rather than the apex. It keeps Honk's sending reputation
+separate from your personal mail, and it means you never touch the apex SPF
+record — which is what would break existing mail on a domain you already send
+or receive from.
+
+The hosting domain is a separate question and needs nothing: `*.vercel.app` is
+fine. Only the *sending* domain has to be one you control, because only that
+one needs DNS records.
 
 Test with an address that is not yours before you tell anyone about the site.
 
 ---
 
-## 5. Deploy
+### Deploying from scratch
 
 ```bash
 git remote add origin git@github.com:<you>/honk.git
@@ -108,22 +203,23 @@ git push -u origin main
 In Vercel: **Add New → Project**, import the repo. `vercel.json` pins
 `"framework": "nextjs"`, so no build settings need changing.
 
-Add the four environment variables under Settings → Environment Variables, for
+Add the environment variables under Settings → Environment Variables, for
 Production **and** Preview. Deploy.
 
-Then set `NEXT_PUBLIC_SITE_URL` to the real URL and redeploy once — it is baked
-in at build time, so a value added after the fact will not take effect until
-the next build.
+They are read at build time, so a value added after a deploy does not take
+effect until the next one.
 
-### Custom domain
+### Custom domain — optional
 
-Add it in Vercel → Settings → Domains, point DNS at Vercel, then update
-`NEXT_PUBLIC_SITE_URL` and redeploy. Do this before sharing any invite links —
-they embed the origin they were generated on.
+`*.vercel.app` works fine and needs no configuration. If you later want a
+shorter URL for the frosh-week push, add it in Vercel → Settings → Domains,
+point DNS at Vercel, then set `NEXT_PUBLIC_SITE_URL` to it and redeploy. Do
+that before sharing invite links — they embed the origin they were generated
+on.
 
 ---
 
-## 6. Smoke test
+## Smoke test
 
 Most of this is automated. Point the script at the deployment:
 
@@ -149,7 +245,7 @@ Four things need a human, and they are the four that matter most:
 
 1. **A code actually arriving in a real inbox.** Sign in with an
    `@uwaterloo.ca` address **that is not yours**. This is the only way to catch
-   the Resend domain problem in section 4 — the API returns 200 whether or not
+   the Resend domain problem above — the API returns 200 whether or not
    the mail is deliverable.
 2. **The paste survives sign-in.** Paste before signing in; after verifying,
    the schedule should be on `/home` without pasting again.
@@ -163,7 +259,7 @@ Four things need a human, and they are the four that matter most:
 Item 3 is covered by the integration tests, but it is worth ten minutes by hand
 before real students are on it.
 
-## 7. Things that will look broken and are not
+## Things that will look broken and are not
 
 **Nobody can see anyone.** `discoverable` defaults to **false**, by design —
 a new user is in nobody's class roster until they opt in. On launch day this
@@ -188,7 +284,7 @@ explicitly, so "free right now" is correct regardless of where Vercel runs it.
 
 ---
 
-## 8. What this deploy has not proven
+## What this deploy has not proven
 
 Carried over from `CHANGELOG.md`, because it matters more once real people are
 on it:
@@ -200,18 +296,18 @@ on it:
   silently rather than warning, so check those by hand first.
 - ~~The integration tests have not been run.~~ **Done** — all 12 pass against
   the live Neon database, so the privacy rules are verified. The automated
-  smoke test in section 6 does not replace them: it checks what a signed-out
+  smoke test does not replace them: it checks what a signed-out
   stranger sees, not what two signed-in accounts see of each other.
 - **Email delivery has never been exercised.** The console path is confirmed
   working (a code is issued and printed), but no mail has been sent through
-  Resend. This is the one remaining hard blocker — see section 4.
+  Resend. This is the one remaining hard blocker — see "What is left" above.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
 
 Next was bumped 15.5.4 → 15.5.9 for a React Server Components CVE, and the full
 suite passes on it. Keep taking those patches: Vercel opens them as pull
 requests automatically.
 
-## 9. If you need to roll back
+## If you need to roll back
 
 Vercel keeps every deployment. Deployments → the last good one → **Promote to
 Production**. Instant, and it does not touch the database.
