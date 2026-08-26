@@ -20,9 +20,9 @@ Two consequences worth knowing:
   all written by me against formats reconstructed from `SPEC.md` §4. See
   "Where this will break" below — that section is the most important part of
   this file.
-- **The 12 Postgres integration tests have never been executed.** They are
-  written and they skip cleanly, but this environment had no Postgres, no
-  Docker and no `DATABASE_URL`. See "Not verified" below.
+- **The 12 Postgres integration tests now pass** against a live Neon
+  database. They were unexecuted when first written; see "Not verified" below
+  for what is still outstanding.
 
 ---
 
@@ -126,8 +126,8 @@ schema directly instead of going through the enforcement points. It also
 asserts `getClassmates` never mentions `meetings`, `location` or `startMin`;
 that every friends-only function gates on the friend graph; and that no file
 contains a "who viewed your profile", proximity or streak field. **It needs no
-database, so it is the one privacy test that cannot be skipped** — which
-matters given the integration tests are the ones that skip.
+database, so it is the one privacy test that cannot be skipped** — it guards
+the boundary on every machine, including CI with no database configured.
 
 **`getProfileByHandle`** was added to `queries.ts` rather than written as a new
 query, so handle lookup goes through the same discoverability and block checks
@@ -197,18 +197,11 @@ against a real paste first.
 
 ## Not verified
 
-- **The 12 Postgres integration tests have not been run.** No Postgres, no
-  Docker and no `DATABASE_URL` were available here. They are written against
-  the real query functions and skip cleanly without a database. Run them before
-  trusting the privacy guarantees end to end:
-
-  ```bash
-  DATABASE_URL=postgres://... npm run db:push
-  DATABASE_URL=postgres://... npm test
-  ```
-
-  Everything else passes: 128 unit tests, `npm run typecheck` clean,
-  `npm run build` clean.
+- ~~The 12 Postgres integration tests have not been run.~~ **Resolved.** A
+  Neon database is provisioned, `db:push` has created all nine tables, and the
+  full suite passes: **149 tests, 137 unit + 12 integration**, plus
+  `npm run typecheck` and `npm run build` clean. The privacy rules in SPEC §6
+  are now verified against real Postgres rather than only asserted.
 
 - **No screenshot of the reveal screen.** The Chrome extension was not
   connected in this environment, so the grid was verified by fetching rendered
@@ -219,8 +212,10 @@ against a real paste first.
   brief calls this the most important screen in the product, look at it on a
   real phone before showing anyone.
 
-- **Email delivery.** The Resend path is written but never exercised — only
-  the console path ran.
+- **Email delivery.** The Resend path is written but never exercised. The
+  console path is confirmed working end to end — a code is issued, hashed,
+  stored and printed — but no mail has been sent. Verifying a Resend sending
+  domain is the last hard blocker before anyone else can sign in.
 
 ---
 

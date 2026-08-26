@@ -15,9 +15,9 @@ most likely to break.
 | Quest paste parser | ✅ 59 tests, never seen a real paste — see `CHANGELOG.md` |
 | Overlap / shared-gap interval maths | ✅ 32 tests |
 | Landing page + paste → review flow | ✅ runs client-side, no account needed |
-| Database schema (Drizzle) | ✅ written, `npm run db:push` not yet run |
+| Database schema (Drizzle) | ✅ live on Neon, all nine tables pushed |
 | Session + `@uwaterloo.ca` verification | ✅ 14 tests, routes wired |
-| Classmate + shared-gap queries | ✅ screens built, 12 integration tests **not yet run** |
+| Classmate + shared-gap queries | ✅ screens built, 12 integration tests **passing on Neon** |
 | Friend graph (request/accept/block) | ✅ screens built |
 | `/home`, settings, profile, invite links | ✅ built |
 | Email delivery via Resend | ⚠️ written, never exercised — console path only |
@@ -36,22 +36,17 @@ npm run dev
 ```
 
 ```bash
-npm test           # 128 unit tests; the 12 integration tests skip without a DB
+npm test           # 149 tests (137 unit + 12 integration, with .env.local present)
 npm run typecheck
 npm run build
-npm run db:push    # once DATABASE_URL is set
+npm run smoke -- <url>   # 21 checks against a deployed URL
 ```
 
 With no `RESEND_API_KEY`, sign-in codes print to the server console instead of
 being emailed, and the sign-in screen says so.
 
-To run the privacy integration tests, which is worth doing before trusting any
-of the guarantees below:
-
-```bash
-DATABASE_URL=postgres://... npm run db:push
-DATABASE_URL=postgres://... npm test
-```
+The privacy integration tests run as part of `npm test` whenever a
+`DATABASE_URL` is present, and they currently pass against Neon.
 
 ## Layout
 
@@ -96,8 +91,8 @@ telling anyone the URL, or nobody but you will be able to sign in.
 
 ## Next
 
-1. Run `npm run db:push` against a real Postgres and run the integration tests.
-2. Look at the reveal screen on a real phone. It has never been rendered in a
-   browser by a human.
+1. Verify a sending domain in Resend. Until then nobody but you can sign in —
+   the API returns 200 whether or not the mail is deliverable.
+2. Look at the reveal screen on a real phone.
 3. Soft-launch to a handful of people and fix the parser against their real
    pastes.

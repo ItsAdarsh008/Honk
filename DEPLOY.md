@@ -39,41 +39,45 @@ nothing secret. The Resend key is server-only and must stay that way.
 
 ## 3. The database
 
-Create a Postgres database (Neon: new project → copy the connection string).
+**Already done for this project.** A Neon project named `honk` exists, `.neon`
+in the repo root pins the org and project ids, and `npm run db:push` has been
+run against it — all nine tables are live. `.env.local` holds the pulled
+`DATABASE_URL` and is gitignored.
+
+To repeat this on a fresh machine, or for a second environment:
+
+```bash
+npx neon@latest init      # auth, pick org + project
+npx neon env pull         # writes DATABASE_URL into .env.local
+npm run db:push           # creates the tables
+```
 
 **Use the pooled connection string.** On Neon it has `-pooler` in the hostname.
 Vercel runs each request in its own short-lived instance and the app opens a
 small pool per instance, so an unpooled string will exhaust connections as soon
 as more than a handful of people are on at once.
 
-Create the tables from your machine — this is a one-time thing, not part of the
-deploy:
-
-```bash
-DATABASE_URL='postgres://...' npm run db:push
-```
-
-That is `drizzle-kit push`, which diffs the schema straight onto the database.
-It is the right tool for standing this up now. Once real students have rows in
-there, switch to generated migrations (`npm run db:generate`, committed to the
-repo) so you can review a change before it runs.
+`db:push` is `drizzle-kit push`, which diffs the schema straight onto the
+database. It is the right tool for standing this up now. Once real students
+have rows in there, switch to generated migrations (`npm run db:generate`,
+committed to the repo) so you can review a change before it runs.
 
 ### Verify the privacy rules actually hold
 
 The 12 integration tests in `src/lib/overlap/queries.integration.test.ts`
-encode the SPEC §6 rules — what a non-friend, a hidden user and a blocked user
-cannot see. **They have never been executed.** Run them before you trust any of
-the guarantees:
+encode the SPEC section 6 rules — what a non-friend, a hidden user and a
+blocked user cannot see. **They have now been run against real Postgres and
+all pass**, so the guarantees are verified rather than merely asserted.
+
+With `.env.local` present they run as part of the normal suite:
 
 ```bash
-DATABASE_URL='postgres://...' npm test
+npm test        # 149 tests: 137 unit + 12 integration
 ```
 
-Expect 137 unit tests plus the 12 integration tests, all passing.
-
-Run them against a **branch or scratch database, never production.** They
-create and delete real users, and they clean up by deleting sections in term
-`9999` and courses with subject `ZZ`.
+Run them against a **branch or scratch database, never production once real
+students are on it.** They create and delete real users, and clean up by
+deleting sections in term `9999` and courses with subject `ZZ`.
 
 ---
 
@@ -194,10 +198,13 @@ on it:
   different faculties on day one and turn every failure into a test case.
   `CHANGELOG.md` ranks the six failure modes I expect; two of them fail
   silently rather than warning, so check those by hand first.
-- **The integration tests have not been run** unless you did section 3.
-  The automated smoke test in section 6 does not cover them — it checks what a
-  signed-out stranger sees, not what two signed-in accounts see of each other.
-- **Email delivery has never been exercised** — only the console path.
+- ~~The integration tests have not been run.~~ **Done** — all 12 pass against
+  the live Neon database, so the privacy rules are verified. The automated
+  smoke test in section 6 does not replace them: it checks what a signed-out
+  stranger sees, not what two signed-in accounts see of each other.
+- **Email delivery has never been exercised.** The console path is confirmed
+  working (a code is issued and printed), but no mail has been sent through
+  Resend. This is the one remaining hard blocker — see section 4.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
 
 Next was bumped 15.5.4 → 15.5.9 for a React Server Components CVE, and the full
