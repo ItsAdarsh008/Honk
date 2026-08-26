@@ -28,10 +28,18 @@ const SELF_SCOPED = [
   join("src", "lib", "account.ts"),
   join("src", "lib", "auth", "session.ts"),
   join("src", "lib", "schedule", "save.ts"),
-  join("src", "lib", "invite.ts"),
   join("src", "lib", "db", "schema.ts"),
   join("src", "lib", "db", "index.ts"),
 ];
+
+/**
+ * Reads without a signed-in viewer. Each is allowed only because of what it
+ * refuses to return, and each is asserted below rather than trusted:
+ *
+ *  - `invite.ts` returns a display name, and only for a discoverable user.
+ *  - `stats.ts` returns a count and never a row.
+ */
+const ANONYMOUS_READS = [join("src", "lib", "invite.ts"), join("src", "lib", "stats.ts")];
 
 const SENSITIVE_TABLES = ["enrollments", "meetings", "users"];
 
@@ -47,7 +55,9 @@ function walk(dir: string): string[] {
 
 function isAllowed(relPath: string): boolean {
   if (relPath.endsWith(".test.ts")) return true;
-  return [...ENFORCEMENT_POINTS, ...SELF_SCOPED].some((allowed) => relPath === allowed);
+  return [...ENFORCEMENT_POINTS, ...SELF_SCOPED, ...ANONYMOUS_READS].some(
+    (allowed) => relPath === allowed,
+  );
 }
 
 describe("privacy boundary", () => {
@@ -115,6 +125,23 @@ describe("privacy boundary", () => {
         `${fn} must gate on the friend graph`,
       ).toBe(true);
     }
+  });
+
+  it("keeps the anonymous reads to what justifies them", () => {
+    // stats.ts may count. The moment it selects a column it stops being an
+    // aggregate and becomes a directory of everyone with an account.
+    const stats = files.find((f) => f.path === join("src", "lib", "stats.ts"));
+    expect(stats, "stats.ts is missing").toBeDefined();
+    expect(stats!.source).toContain("count(*)");
+    for (const column of ["users.handle", "users.displayName", "users.email", "users.id"]) {
+      expect(stats!.source, `stats.ts must not select ${column}`).not.toContain(column);
+    }
+
+    // invite.ts may name a person, but only one who opted in to being seen.
+    const invite = files.find((f) => f.path === join("src", "lib", "invite.ts"));
+    expect(invite, "invite.ts is missing").toBeDefined();
+    expect(invite!.source).toContain("eq(users.discoverable, true)");
+    expect(invite!.source).not.toContain("users.email");
   });
 
   it("has no 'who viewed your profile', proximity or streak features", () => {

@@ -85,6 +85,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             Honk is not affiliated with the University of Waterloo. Your schedule is only
             visible to people you have added.
           </p>
+          <p className="mt-2 text-[13px] text-[var(--ink-faint)]">
+            Made by{" "}
+            <a
+              href="https://adarshthoduvakkal.com"
+              target="_blank"
+              rel="noreferrer"
+              className="underline-offset-2 hover:text-[var(--clay)] hover:underline"
+            >
+              Adarsh Thoduvakkal
+            </a>
+            .
+          </p>
         </footer>
       </body>
     </html>

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PasteFlow } from "@/components/PasteFlow";
 import { getOptionalUser } from "@/lib/auth/current";
 import { getCurrentTermCode } from "@/lib/overlap/queries";
+import { getVisibleUserCount } from "@/lib/stats";
 import { hasDatabase } from "@/lib/db";
 
 /**
@@ -18,6 +19,8 @@ export default async function LandingPage() {
     if (term) redirect("/home");
   }
 
+  const userCount = await getVisibleUserCount();
+
   return (
     <div className="space-y-10">
       <section className="space-y-4">
@@ -30,9 +33,17 @@ export default async function LandingPage() {
           Honk reads your Quest schedule, lays out your week, and shows you who you share
           classes with — and when you and your friends are free at the same time.
         </p>
-        <p className="text-[14px] text-[var(--ink-faint)]">
-          Waterloo only. No account needed to see your week.
-        </p>
+        <div className="space-y-1 text-[14px] text-[var(--ink-faint)]">
+          <p>Waterloo only. No account needed to see your week.</p>
+          {userCount !== null && (
+            <p>
+              <span className="mono text-[var(--ink-soft)]">
+                {userCount.toLocaleString("en-CA")}
+              </span>{" "}
+              {userCount === 1 ? "student has" : "students have"} joined so far.
+            </p>
+          )}
+        </div>
       </section>
 
       <section className="card p-5 sm:p-6">
