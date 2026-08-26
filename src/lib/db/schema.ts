@@ -53,6 +53,40 @@ export const users = pgTable(
  * Auth
  * ------------------------------------------------------------------ */
 
+/**
+ * Passkeys.
+ *
+ * A device-held credential, so signing in needs no email and no password. This
+ * is what lets somebody get into Honk when the sending domain is being
+ * throttled — the account is created by the passkey, not by a code arriving.
+ *
+ * Only the public key is stored, which is the point: a dump of this table lets
+ * nobody sign in as anybody. `counter` is the authenticator's signature count,
+ * kept so a cloned credential can be spotted.
+ */
+export const credentials = pgTable(
+  "credentials",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Base64url, as the authenticator returns it. */
+    credentialId: text("credential_id").notNull(),
+    publicKey: text("public_key").notNull(),
+    counter: integer("counter").notNull().default(0),
+    /** "internal", "hybrid", … — lets the browser hint at the right device. */
+    transports: text("transports"),
+    label: text("label"),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("credentials_credential_id_key").on(t.credentialId),
+    index("credentials_user_idx").on(t.userId),
+  ],
+);
+
 /** Six-digit sign-in codes. Only the hash is stored. */
 export const loginCodes = pgTable(
   "login_codes",

@@ -360,3 +360,28 @@ export async function findOrCreateEntraUser(
     .returning();
   return { user: created, isNewUser: true };
 }
+
+/**
+ * The account behind a claimed address, created unverified.
+ *
+ * A passkey proves possession of a device, not ownership of a mailbox, so
+ * `verifiedAt` stays null and the account is invisible to everyone until a
+ * code or a Waterloo token says otherwise. An existing verified account is
+ * returned untouched — registering a passkey against an address somebody else
+ * already verified must never hand it over.
+ */
+export async function findOrCreateUnverifiedUser(
+  email: string,
+  db: Db = getDb(),
+): Promise<User> {
+  const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (existing) return existing;
+  const [created] = await db.insert(users).values({ email }).returning();
+  return created;
+}
+
+/** A user by id. Self-scoped: the caller already proved it is this account. */
+export async function getUserById(id: string, db: Db = getDb()): Promise<User | null> {
+  const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return user ?? null;
+}

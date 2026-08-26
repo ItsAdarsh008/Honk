@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearPending, readPending } from "@/lib/pending";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { formatWait } from "@/lib/wait";
 
 type Step = "email" | "code" | "profile" | "capacity";
@@ -152,6 +153,108 @@ export function SignInFlow({
     [sendCode],
   );
 
+  /**
+   * Make a passkey for this address.
+   *
+   * Creates the account if there is not one, so getting into Honk never waits
+   * on a mail gateway. The account starts unverified and invisible until a code
+   * or a Waterloo token says the address is really theirs.
+   */
+  const passkeyRegister = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const optionsRes = await fetch("/api/auth/passkey/register/options", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const optionsBody = (await optionsRes.json().catch(() => ({}))) as {
+        options?: Parameters<typeof startRegistration>[0]["optionsJSON"];
+        userId?: string;
+        error?: string;
+      };
+      if (!optionsRes.ok || !optionsBody.options) {
+        setError(optionsBody.error ?? "That didn't work. Try a code instead.");
+        setBusy(false);
+        return;
+      }
+
+      const attestation = await startRegistration({ optionsJSON: optionsBody.options });
+
+      const verifyRes = await fetch("/api/auth/passkey/register/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: optionsBody.userId, response: attestation }),
+      });
+      const verifyBody = (await verifyRes.json().catch(() => ({}))) as {
+        error?: string;
+        needsProfile?: boolean;
+      };
+      if (!verifyRes.ok) {
+        setError(verifyBody.error ?? "That passkey didn't save. Try a code instead.");
+        setBusy(false);
+        return;
+      }
+      if (verifyBody.needsProfile) {
+        setStep("profile");
+        setBusy(false);
+        requestAnimationFrame(() => nameRef.current?.focus());
+        return;
+      }
+      await finish();
+    } catch {
+      // Cancelling the browser prompt lands here, which is not an error worth
+      // shouting about — the form is still sitting there.
+      setError(null);
+      setBusy(false);
+    }
+  }, [email, finish]);
+
+  /** Sign in with a passkey already on this device. No address needed. */
+  const passkeySignIn = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const optionsRes = await fetch("/api/auth/passkey/signin/options", { method: "POST" });
+      const optionsBody = (await optionsRes.json().catch(() => ({}))) as {
+        options?: Parameters<typeof startAuthentication>[0]["optionsJSON"];
+      };
+      if (!optionsRes.ok || !optionsBody.options) {
+        setError("Passkey sign-in isn't available. Use a code.");
+        setBusy(false);
+        return;
+      }
+
+      const assertion = await startAuthentication({ optionsJSON: optionsBody.options });
+
+      const verifyRes = await fetch("/api/auth/passkey/signin/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ response: assertion }),
+      });
+      const verifyBody = (await verifyRes.json().catch(() => ({}))) as {
+        error?: string;
+        needsProfile?: boolean;
+      };
+      if (!verifyRes.ok) {
+        setError(verifyBody.error ?? "That passkey didn't work. Try a code.");
+        setBusy(false);
+        return;
+      }
+      if (verifyBody.needsProfile) {
+        setStep("profile");
+        setBusy(false);
+        requestAnimationFrame(() => nameRef.current?.focus());
+        return;
+      }
+      await finish();
+    } catch {
+      setError(null);
+      setBusy(false);
+    }
+  }, [finish]);
+
   const submitCode = useCallback(
     async (value: string) => {
       if (busy) return;
@@ -276,12 +379,35 @@ export function SignInFlow({
 
           <ErrorText error={error} />
 
-          <button
-            className={`btn w-full ${entraEnabled ? "btn-quiet" : "btn-primary"}`}
-            disabled={busy || !email.trim()}
-          >
-            {busy ? "Sending…" : "Send me a code"}
+          <div className="space-y-2.5">
+            <button
+              type="button"
+              className="btn btn-primary w-full"
+              onClick={() => void passkeyRegister()}
+              disabled={busy || !email.trim()}
+            >
+              {busy ? "Working…" : "Continue with a passkey"}
+            </button>
+            <p className="text-[13px] leading-relaxed text-[var(--ink-faint)]">
+              Uses Face ID, a fingerprint or your screen lock. Nothing to wait for and
+              nothing to remember — you can add your class list straight away and confirm
+              the address later.
+            </p>
+          </div>
+
+          <button type="submit" className="btn btn-quiet w-full" disabled={busy || !email.trim()}>
+            {busy ? "Sending…" : "Email me a code instead"}
           </button>
+
+          <button
+            type="button"
+            className="w-full text-[14px] text-[var(--ink-soft)] underline-offset-2 hover:underline"
+            onClick={() => void passkeySignIn()}
+            disabled={busy}
+          >
+            Already have a passkey? Sign in
+          </button>
+
         </form>
       )}
 
