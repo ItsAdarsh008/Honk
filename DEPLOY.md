@@ -101,24 +101,8 @@ git remote add origin git@github.com:<you>/honk.git
 git push -u origin main
 ```
 
-In Vercel: **Add New → Project**, import the repo.
-
-`vercel.json` pins `"framework": "nextjs"`, so the preset does not depend on
-detection working. Confirm under **Settings → Build & Deployment** that:
-
-- **Framework Preset** is *Next.js*, not *Other*
-- **Root Directory** is empty (the app is at the repo root)
-- **Output Directory** is on its default, i.e. the override toggle is **off**
-
-If the preset is *Other*, the build fails with:
-
-> No Output Directory named "public" found after the Build completed.
-
-That is Vercel not running `next build` at all and looking for a plain static
-site instead. **Do not create a `public/` folder to make it go away** — the
-build would then "succeed" and deploy an empty directory, which is a worse
-failure because it looks like it worked. Fix the preset instead. A `public/`
-folder is optional in Next.js and this project does not have one.
+In Vercel: **Add New → Project**, import the repo. `vercel.json` pins
+`"framework": "nextjs"`, so no build settings need changing.
 
 Add the four environment variables under Settings → Environment Variables, for
 Production **and** Preview. Deploy.
@@ -137,36 +121,43 @@ they embed the origin they were generated on.
 
 ## 6. Smoke test
 
-In a private window, in this order:
+Most of this is automated. Point the script at the deployment:
 
-1. **`/` loads and the paste box works with no account.** Paste a real Quest
-   schedule. The grid should appear instantly. This is the one path that needs
-   no database, so it working proves nothing about the rest.
-2. **Sign in with a real `@uwaterloo.ca` address that is not yours.** The code
-   should arrive by email within a few seconds. If it does not, go back to §4.
-3. **A non-Waterloo address is refused.** `someone@gmail.com` should return
-   "Honk is Waterloo-only…", not a server error.
-4. **The schedule you pasted before signing in is saved.** It should be on
-   `/home` without pasting again.
-5. **The discoverability prompt appears once**, and only once — reload and
-   confirm it does not come back.
-6. **`/home` shows your classes** with counts.
-7. **Link preview.** Paste your URL into iMessage or a Slack DM and confirm the
-   OG card renders.
-8. **Settings works**: toggle discoverability, then delete the schedule and
-   confirm it is gone.
+```bash
+npm run smoke -- https://your-honk-url
+```
 
-With a second account, on the same course:
+It runs 21 checks and exits non-zero if any fail, so it can gate a deploy in
+CI. It covers the paste box rendering with no account, invite links landing on
+the paste screen rather than a signup wall, `/home` and `/settings` redirecting
+a signed-out visitor, all three icons serving, the OG image being an absolute
+URL, the `@uwaterloo.ca` gate accepting and refusing the right addresses, every
+sensitive API route refusing an unauthenticated caller, and no room numbers
+appearing in signed-out HTML.
 
-9. **Neither of you sees the other** until you both turn discoverability on.
-10. **Shared gaps appear only after a request is accepted**, not before.
-11. **Block one from the other.** Confirm they vanish from both class rosters,
-    and that the blocked side is told nothing.
+It also reports whether `DATABASE_URL` is wired, and warns if `og:image` points
+at a different origin than the one you tested — which means
+`NEXT_PUBLIC_SITE_URL` is wrong and link previews will break.
 
-Steps 9–11 are the ones worth doing by hand even though the integration tests
-cover them.
+### What the script cannot check
 
----
+Four things need a human, and they are the four that matter most:
+
+1. **A code actually arriving in a real inbox.** Sign in with an
+   `@uwaterloo.ca` address **that is not yours**. This is the only way to catch
+   the Resend domain problem in section 4 — the API returns 200 whether or not
+   the mail is deliverable.
+2. **The paste survives sign-in.** Paste before signing in; after verifying,
+   the schedule should be on `/home` without pasting again.
+3. **Two accounts, same course.** Neither should see the other until both turn
+   discoverability on, and shared gaps should appear only after a request is
+   accepted. Then block one from the other and confirm they vanish from both
+   rosters and the blocked side is told nothing.
+4. **The link preview.** Paste the URL into iMessage or a Slack DM and look at
+   the card.
+
+Item 3 is covered by the integration tests, but it is worth ten minutes by hand
+before real students are on it.
 
 ## 7. Things that will look broken and are not
 
@@ -203,9 +194,15 @@ on it:
   different faculties on day one and turn every failure into a test case.
   `CHANGELOG.md` ranks the six failure modes I expect; two of them fail
   silently rather than warning, so check those by hand first.
-- **The integration tests have not been run** unless you did §3.
+- **The integration tests have not been run** unless you did section 3.
+  The automated smoke test in section 6 does not cover them — it checks what a
+  signed-out stranger sees, not what two signed-in accounts see of each other.
 - **Email delivery has never been exercised** — only the console path.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
+
+Next was bumped 15.5.4 → 15.5.9 for a React Server Components CVE, and the full
+suite passes on it. Keep taking those patches: Vercel opens them as pull
+requests automatically.
 
 ## 9. If you need to roll back
 

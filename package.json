@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke": "vite-node scripts/smoke.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate"
   },
