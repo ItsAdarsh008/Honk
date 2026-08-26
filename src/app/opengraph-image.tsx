@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
-import { GOOSE_CLAY, GOOSE_PATH, GOOSE_VIEWBOX } from "@/lib/goose";
+import { GooseMark } from "@/components/GooseMark";
+import { GOOSE_LIGHT } from "@/lib/goose";
 
 /**
  * The link preview. This is how Honk actually spreads — pasted into iMessage
@@ -37,9 +38,7 @@ export default function OpengraphImage() {
       >
         <div style={{ display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 34 }}>
-            <svg width="44" height="44" viewBox={GOOSE_VIEWBOX} fill="none">
-              <path fillRule="evenodd" clipRule="evenodd" d={GOOSE_PATH} fill={GOOSE_CLAY} />
-            </svg>
+            <GooseMark size={48} palette={GOOSE_LIGHT} />
             <span style={{ fontSize: 34, fontWeight: 600, color: "#33322C", letterSpacing: -1 }}>
               Honk
             </span>

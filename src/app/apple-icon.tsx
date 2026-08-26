@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
-import { GOOSE_CLAY, GOOSE_CREAM, GOOSE_PATH, GOOSE_VIEWBOX } from "@/lib/goose";
+import { GooseMark } from "@/components/GooseMark";
+import { GOOSE_CREAM, GOOSE_LIGHT } from "@/lib/goose";
 
 /** Home-screen icon. iOS masks the corners itself, so the ground is a full bleed. */
 export const size = { width: 180, height: 180 };
@@ -18,9 +19,7 @@ export default function AppleIcon() {
           background: GOOSE_CREAM,
         }}
       >
-        <svg width="126" height="126" viewBox={GOOSE_VIEWBOX} fill="none">
-          <path fillRule="evenodd" clipRule="evenodd" d={GOOSE_PATH} fill={GOOSE_CLAY} />
-        </svg>
+        <GooseMark size={132} palette={GOOSE_LIGHT} />
       </div>
     ),
     size,

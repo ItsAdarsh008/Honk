@@ -3,8 +3,9 @@ import Link from "next/link";
 import "./globals.css";
 import { GooseMark } from "@/components/GooseMark";
 import { getOptionalUser } from "@/lib/auth/current";
+import { siteUrl } from "@/lib/site";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const SITE_URL = siteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

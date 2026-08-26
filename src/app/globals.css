@@ -30,6 +30,14 @@
   --course-fg: #33322c;
   --course-edge: rgb(0 0 0 / 0.07);
 
+  /* The goose. Natural Canada-goose colours, drawn from the palette. */
+  --goose-body: #c97b4a;
+  --goose-belly: #e0a878;
+  --goose-head: #33322c;
+  --goose-cheek: #fdfbf6;
+  --goose-beak: #33322c;
+  --goose-line: #33322c;
+
   --shadow-soft: 0 1px 2px rgb(51 50 44 / 0.04), 0 4px 16px rgb(51 50 44 / 0.05);
   --shadow-lift: 0 2px 4px rgb(51 50 44 / 0.05), 0 10px 28px rgb(51 50 44 / 0.08);
 
@@ -66,6 +74,15 @@
     --course-6-bg: #3f3a54;
     --course-fg: #e8e4db;
     --course-edge: rgb(255 255 255 / 0.07);
+
+    /* Lifted off near-black: the head sits just above the ground and the
+       outline carries the silhouette. */
+    --goose-body: #c4794a;
+    --goose-belly: #a96a40;
+    --goose-head: #4a4741;
+    --goose-cheek: #edeae3;
+    --goose-beak: #4a4741;
+    --goose-line: #9a948a;
 
     --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
     --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.35), 0 10px 28px rgb(0 0 0 / 0.35);
