@@ -184,8 +184,19 @@ const DAYS_TIMES_FULL_RE = new RegExp(
 const TIME_ONLY_RE = new RegExp(
   String.raw`^(${TIME_PART})\s*(?:[-–—]|to)\s*(${TIME_PART})$`,
 );
-const ROOM_RE = /^(?:[A-Z]{1,4}\d{0,2}\s+\d{1,4}[A-Z]?|ONLINE|REMOTE|OFF\s+CAMPUS)$/i;
+/**
+ * A building code and a number (`MC 4020`, `E7 2317`, `EV3 1408`), or one of
+ * the ways Quest says "not a room". Real pastes carry `ONLN - Online`, so the
+ * online forms allow a trailing description — without it that cell fails the
+ * room test and spills into the instructor field.
+ */
+const ROOM_RE =
+  /^(?:[A-Z]{1,4}\d{0,2}\s+\d{1,4}[A-Z]?|(?:ONLN|ONLINE|REMOTE|WEB|VIRTUAL|OFF\s?CAMPUS)(?:\s*[-–—]\s*.+)?)$/i;
 const STATUS_RE = /^(Enrolled|Dropped|Waitlisted|Waiting|Wait\s?List(?:ed)?)\b/i;
+
+/** The List View column headings, used as record boundaries when reflowing. */
+const COLUMN_HEADING_RE =
+  /^(class\s*nbr|section|component|days?\s*&?\s*times?|room|instructor|start\/end\s*date|status|units|grading|grade|deadlines)\b/i;
 
 /** Chrome, column headings and other copy noise. Skipped without a warning. */
 const NOISE_RE = new RegExp(
@@ -330,6 +341,82 @@ function assignFromCells(cells: string[]): RawRow | null {
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * Vertical pastes
+ * ------------------------------------------------------------------ */
+
+/**
+ * Quest's List View copies one cell per line.
+ *
+ * `SPEC.md`'s example was a tab-separated table, which is what you get by
+ * copying a table element. But Quest builds List View out of stacked divs, so
+ * selecting the whole page — which is what the instructions on the paste screen
+ * tell you to do — puts every cell on its own line. A class row arrives as
+ * seven consecutive lines and nothing downstream recognises any of them.
+ *
+ * Rather than teach every rule below about a fourth layout, the record is
+ * stitched back into one tab-separated line and the existing parser takes over
+ * unchanged. Horizontal pastes never contain a bare class number on its own
+ * line, so they route around this untouched.
+ */
+function reflowVerticalRows(lines: string[]): string[] {
+  if (!lines.some((l) => CLASS_NBR_RE.test(l.trim()))) return lines;
+
+  /**
+   * Where a record stops. Blank counts: Quest never splits a cell across a
+   * blank line, so stopping there turns a missing column into a short row the
+   * parser warns about, rather than one silently filled from the next record.
+   */
+  const isBoundary = (raw: string): boolean => {
+    const t = raw.trim();
+    if (!t) return true;
+    return (
+      CLASS_NBR_RE.test(t) ||
+      COURSE_HEADER_RE.test(t) ||
+      COLUMN_HEADING_RE.test(t) ||
+      STATUS_RE.test(t)
+    );
+  };
+
+  const take = (from: number, max: number): string[] => {
+    const cells: string[] = [];
+    let j = from;
+    while (j < lines.length && cells.length < max && !isBoundary(lines[j])) {
+      cells.push(lines[j].trim());
+      j += 1;
+    }
+    return cells;
+  };
+
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+
+    // Class Nbr, Section, Component, Days & Times, Room, Instructor, Dates.
+    if (CLASS_NBR_RE.test(trimmed)) {
+      const cells = take(i + 1, 6);
+      out.push([trimmed, ...cells].join("\t"));
+      i += 1 + cells.length;
+      continue;
+    }
+
+    // A second meeting for the section above: no class number, so the record
+    // starts at the Days & Times column and runs three cells shorter.
+    if (isDaysTimes(trimmed)) {
+      const cells = take(i + 1, 3);
+      out.push([trimmed, ...cells].join("\t"));
+      i += 1 + cells.length;
+      continue;
+    }
+
+    out.push(lines[i]);
+    i += 1;
+  }
+
+  return out;
+}
+
 const FLAT_ROW_RE = /^\s*(\d{4,5})\s+([A-Za-z0-9]{1,6})\s+([A-Za-z]{2,4})\s+(.*)$/;
 
 function assignFromFlatLine(line: string): RawRow | null {
@@ -389,10 +476,22 @@ function parseRow(line: string): RawRow | null {
  * Field normalisation
  * ------------------------------------------------------------------ */
 
+/**
+ * What Quest writes when nobody is assigned yet. Real pastes say
+ * "To be Announced" in the Instructor column, which was being stored and shown
+ * as a person's name.
+ *
+ * Only for normalising a value already placed in a column. `isTba` stays narrow
+ * because it decides *which* column a cell belongs to, and a broad match there
+ * would let an unassigned instructor be mistaken for the room.
+ */
+const UNASSIGNED_RE =
+  /^(?:tba|tbd|to\s+be\s+announced|to\s+be\s+determined|staff|not\s+assigned)$/i;
+
 function normaliseTba(value: string | null): string | null {
   if (value === null) return null;
   const trimmed = value.trim();
-  if (!trimmed || isTba(trimmed)) return null;
+  if (!trimmed || UNASSIGNED_RE.test(trimmed)) return null;
   return trimmed;
 }
 
@@ -410,6 +509,56 @@ function plausibleTerm(startIso: string, endIso: string): boolean {
   return span >= 0 && span <= 250;
 }
 
+type DateOrder = "monthFirst" | "dayFirst";
+type DateRange = { startDate: string; endDate: string };
+
+function readings(m: RegExpMatchArray): Record<DateOrder, DateRange> {
+  return {
+    monthFirst: { startDate: toIso(m[1], m[2], m[3]), endDate: toIso(m[4], m[5], m[6]) },
+    dayFirst: { startDate: toIso(m[2], m[1], m[3]), endDate: toIso(m[5], m[4], m[6]) },
+  };
+}
+
+/** The order this one range forces, or null when both readings hold up. */
+function decideOrder(m: RegExpMatchArray): DateOrder | null {
+  const monthPossible = Number(m[1]) <= 12 && Number(m[4]) <= 12;
+  const dayPossible = Number(m[2]) <= 12 && Number(m[5]) <= 12;
+  // A component above 12 can only be a day, which decides it outright.
+  if (monthPossible && !dayPossible) return "monthFirst";
+  if (dayPossible && !monthPossible) return "dayFirst";
+  if (!monthPossible && !dayPossible) return null;
+
+  // Both readable as dates: prefer the one that describes an actual term.
+  const { monthFirst, dayFirst } = readings(m);
+  const monthOk = plausibleTerm(monthFirst.startDate, monthFirst.endDate);
+  const dayOk = plausibleTerm(dayFirst.startDate, dayFirst.endDate);
+  if (monthOk && !dayOk) return "monthFirst";
+  if (dayOk && !monthOk) return "dayFirst";
+  return null;
+}
+
+/**
+ * The reading the whole paste agrees on.
+ *
+ * Term ranges settle themselves — `09/09/2026 - 08/12/2026` is only ordered
+ * read day-first. Single-day rows do not: a midterm on `08/10/2026` is equally
+ * readable as 8 October and 10 August. Deciding those in isolation and falling
+ * back to MM/DD put a real Thursday test in August. Every range in the paste
+ * comes from one account with one date setting, so the ones that settle
+ * themselves settle the rest.
+ */
+function detectDateOrder(input: string): DateOrder | null {
+  let monthFirst = 0;
+  let dayFirst = 0;
+  for (const m of input.matchAll(new RegExp(DATE_RANGE_RE.source, "g"))) {
+    const verdict = decideOrder(m);
+    if (verdict === "monthFirst") monthFirst += 1;
+    else if (verdict === "dayFirst") dayFirst += 1;
+  }
+  if (monthFirst === dayFirst) return null;
+  return monthFirst > dayFirst ? "monthFirst" : "dayFirst";
+}
+
 /**
  * Read a Quest date range.
  *
@@ -420,32 +569,17 @@ function plausibleTerm(startIso: string, endIso: string): boolean {
  * date would file two students in the same lecture under different terms and
  * they would never match.
  *
- * Both readings are tried and the one that produces a plausible term wins.
- * A range like `09/08/2026 - 12/02/2026` is only ordered under MM/DD, which
- * settles it; a genuinely ambiguous range falls back to MM/DD, Quest's default.
+ * `fallback` is what the rest of the paste voted for; MM/DD, Quest's default,
+ * only applies when nothing in the paste settles it either.
  */
-function parseDates(raw: string | null): { startDate: string | null; endDate: string | null } {
+function parseDates(
+  raw: string | null,
+  fallback: DateOrder = "monthFirst",
+): { startDate: string | null; endDate: string | null } {
   if (!raw) return { startDate: null, endDate: null };
   const m = DATE_RANGE_RE.exec(raw);
   if (!m) return { startDate: null, endDate: null };
-
-  const monthFirst = { startDate: toIso(m[1], m[2], m[3]), endDate: toIso(m[4], m[5], m[6]) };
-  const dayFirst = { startDate: toIso(m[2], m[1], m[3]), endDate: toIso(m[5], m[4], m[6]) };
-
-  const monthFirstPossible = Number(m[1]) <= 12 && Number(m[4]) <= 12;
-  const dayFirstPossible = Number(m[2]) <= 12 && Number(m[5]) <= 12;
-
-  // A component above 12 can only be a day, which decides it outright.
-  if (monthFirstPossible && !dayFirstPossible) return monthFirst;
-  if (dayFirstPossible && !monthFirstPossible) return dayFirst;
-
-  // Both readable as dates: prefer the one that describes an actual term.
-  const monthFirstOk = plausibleTerm(monthFirst.startDate, monthFirst.endDate);
-  const dayFirstOk = plausibleTerm(dayFirst.startDate, dayFirst.endDate);
-  if (monthFirstOk && !dayFirstOk) return monthFirst;
-  if (dayFirstOk && !monthFirstOk) return dayFirst;
-
-  return monthFirst;
+  return readings(m)[decideOrder(m) ?? fallback];
 }
 
 function meetingsFrom(daysTimes: string | null, room: string | null): ParsedMeeting[] {
@@ -506,7 +640,12 @@ export function parseQuestSchedule(input: string): ParseResult {
   let current: ParsedCourse | null = null;
   let lastSection: ParsedSection | null = null;
 
-  const lines = input.replace(/\r\n?/g, "\n").split("\n");
+  // Non-breaking spaces come through the whole page copy in bulk, and they
+  // have to go before anything measures a line's shape.
+  const normalised = input.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ");
+  const dateOrder = detectDateOrder(normalised) ?? "monthFirst";
+  const lines = reflowVerticalRows(normalised.split("\n"));
+
 
   lines.forEach((rawLine, index) => {
     const lineNo = index + 1;
@@ -553,7 +692,7 @@ export function parseQuestSchedule(input: string): ParseResult {
         const extra = meetingsFrom(candidate, roomCell);
         if (extra.length) {
           lastSection.meetings.push(...extra);
-          const extraDates = parseDates(cells ? cells.join(" ") : trimmed);
+          const extraDates = parseDates(cells ? cells.join(" ") : trimmed, dateOrder);
           if (extraDates.startDate && !lastSection.startDate) {
             lastSection.startDate = extraDates.startDate;
             lastSection.endDate = extraDates.endDate;
@@ -585,7 +724,7 @@ export function parseQuestSchedule(input: string): ParseResult {
       return;
     }
 
-    const dates = parseDates(row.dates);
+    const dates = parseDates(row.dates, dateOrder);
     const existing = current.sections.find((s) => s.classNumber === row.classNumber);
     const meetings = meetingsFrom(row.daysTimes, row.room);
 

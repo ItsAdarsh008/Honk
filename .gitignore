@@ -9,3 +9,6 @@ build/
 next-env.d.ts
 .DS_Store
 .vercel
+
+# Real Quest pastes, kept out of git: they are personal schedules.
+quest-samples/

@@ -144,54 +144,65 @@ names. The page reads fine without a name.
 
 ## Where this will break — read this before launch
 
-The parser has only ever seen output I reconstructed from `SPEC.md`. These are
-the specific things I expect to fail on real pastes, most likely first.
+**Updated after the first real paste.** The predictions below were ranked
+before the parser had ever seen Quest output. One of them was right, one was
+right for the wrong reason, and the actual top failure was not on the list at
+all.
 
-1. **Delimiters.** Copying an HTML table out of a browser normally yields
-   tab-separated cells, but `SPEC.md`'s example is column-aligned text. All
-   three forms are handled — tabs, runs of 2+ spaces, and single-spaced flat
-   rows — but the flat-row path is the weakest. It splits by anchored prefix
-   matching, so a room code it does not recognise will spill into the
-   instructor field. **Whichever form real Quest actually produces, the other
-   two are largely untested.**
+**0. The layout itself — the one that was missed.** Quest's List View is built
+from stacked divs, not a table, so selecting the whole page puts **every cell
+on its own line**. A class row arrives as seven consecutive lines. All three
+delimiter forms below were beside the point: none of them applied, every class
+row failed, and seven courses parsed to zero with "Nothing readable in there
+yet". Fixed by `reflowVerticalRows`, which stitches a stacked record back into
+one tab-separated line before anything else looks at it. The lesson is the one
+`README.md` already gave: the format was guessed from `SPEC.md`, and the guess
+was wrong in a way no amount of internal review would have caught.
 
-2. **Room patterns.** `ROOM_RE` expects a building code and a number
-   (`MC 4020`, `E7 2317`, `STC 0060`). Rooms that do not fit — multi-word
-   buildings, affiliated colleges with unusual codes, anything hyphenated, or
-   an online-delivery string other than `ONLINE`/`REMOTE` — will be misfiled as
-   the instructor. This is my single highest-probability failure.
+1. ~~**Delimiters.**~~ Tabs, 2+ spaces and single-spaced flat rows are still
+   handled, and now so is one-cell-per-line. Real Quest produces the last of
+   these; the other three remain largely untested against real output.
 
-3. **Dropped courses.** Detection depends on a `Dropped` status line appearing
-   inside the course block. If real Quest puts status in a column of the class
-   row instead, a dropped course will be kept and shown as enrolled.
+2. ~~**Room patterns.**~~ Called as "my single highest-probability failure",
+   and it did fire — real pastes carry `ONLN - Online`, which `ROOM_RE` did not
+   match, so it would have spilled into the instructor field. `EV3 1408` and
+   `EXP 1689` were fine. The online forms now allow a trailing description.
 
-4. **Course headers must have a title.** `CS 135 - Designing Functional
-   Programs` parses; a bare `CS 135` does not, and the course is dropped
-   silently. A header that wraps onto two lines in the copy also breaks.
+3. **Dropped courses.** Still unverified. The paste that arrived had none, so
+   detection still depends on a `Dropped` status line inside the course block,
+   and still fails silently if Quest puts status in a column instead.
 
-5. **Section codes merged with the component.** If Quest ever renders
-   `LEC 001` in one column instead of `001` and `LEC` separately, the row fails
-   — though it warns rather than dropping silently, which is the intended
-   degradation.
+4. **Course headers must have a title.** Held up. `BUS 111W`, `MTHEL 99` and
+   `SEQ 5DD` all parsed, including the letter-suffixed catalog numbers.
 
-6. **Dates were the scariest one, and it is now handled.** Quest renders dates
-   in the account's own format, so `09/08/2026` is 8 September to one student
-   and 9 August to another. That is not cosmetic: the term code is derived from
-   these dates, and sections are keyed on `(term_code, class_number)`, so a
-   misread date would file two students in the same lecture under different
-   terms and **they would never match each other** — silently breaking the core
-   mechanic for the affected user. `parseDates` now tries both readings and
-   keeps the one that yields a plausible term, since a term that ends before it
-   starts rules the wrong reading out. Genuinely ambiguous ranges fall back to
-   MM/DD.
+5. **Section codes merged with the component.** Did not occur. Section and
+   component arrive as separate cells.
 
-The right fix for all of 1–5 is the one `README.md` already prescribes: collect
-about ten real pastes across different faculties before launch and turn every
-failure into a test case. The parser reports unreadable rows as warnings rather
-than dropping them, and the review screen shows those warnings, so a failure
-should be visible to the user rather than silent — **except** for cases 3 and 4,
-which fail silently by construction. Those two are worth checking by hand
-against a real paste first.
+6. **Dates — right about the risk, wrong about the fix.** The account that
+   produced this paste is set to **DD/MM**, so the both-readings logic was
+   doing real work from the first paste. But term ranges settle themselves and
+   single-day rows do not: a midterm on `08/10/2026` is equally 8 October and
+   10 August, and the MM/DD fallback put a Thursday test in August. Now the
+   whole paste votes — the ranges that settle themselves settle the rest — and
+   all four single-day rows land on weekdays matching their own `Days & Times`.
+
+7. **"To be Announced" is not a person.** Found while writing tests for the
+   above. Quest writes it in the Instructor column for unassigned staff, and it
+   was being stored and displayed as an instructor's name. `normaliseTba` now
+   treats it, `TBA`, `TBD` and `Staff` as nobody.
+
+This was one student in one program. The standing advice is unchanged: collect
+about ten real pastes across different faculties and turn every failure into a
+test case. The parser reports unreadable rows as warnings rather than dropping them, and the review screen
+shows those warnings, so a failure should be visible to the user rather than
+silent — **except** for cases 3 and 4, which fail silently by construction.
+Case 3 is the one still worth hunting: find a paste with a dropped course.
+
+`scripts/diagnose-paste.ts` exists for exactly this. Point it at a saved paste
+and it prints how every line was classified and where the parser lost the
+thread; the first run of it on a real paste found the layout problem in
+seconds. Raw pastes go in `quest-samples/`, which is gitignored because they
+are personal schedules.
 
 ---
 

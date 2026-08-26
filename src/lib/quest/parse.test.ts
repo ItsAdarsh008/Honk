@@ -479,3 +479,160 @@ describe("parseQuestSchedule", () => {
     expect(parseQuestSchedule(paste).termCode).toBe("1271");
   });
 });
+
+/**
+ * The real thing.
+ *
+ * Reconstructed from the first actual Quest paste this parser ever saw, with
+ * the student's name and the instructors changed. Quest's List View is built
+ * from stacked divs, so selecting the whole page — which is what the paste
+ * screen tells you to do — puts every cell on its own line. None of the three
+ * layouts reconstructed from SPEC.md looked anything like it, and every class
+ * row failed: seven courses in, zero out, "Nothing readable in there yet".
+ */
+const VERTICAL_PASTE = [
+  "GO!",
+  "",
+  " ",
+  "Go To",
+  "Jordan Doe",
+  "My Academics",
+  "Search for Classes",
+  "Enroll",
+  "     My Class Schedule              |              Shopping Cart              |              Add     ",
+  "My Class Schedule",
+  "Select Display Option",
+  "List View",
+  "Fall 2026 | Undergraduate | University of Waterloo",
+  "Group Box",
+  "Show Enrolled Classes",
+  "BUS 111W - Understanding Bus. Env. (WLU)",
+  "Status    Units    Grading    Grade    Deadlines",
+  "Enrolled",
+  "0.50",
+  "Alpha Grading Basis",
+  "Academic Calendar Deadlines",
+  "Class Nbr    Section    Component    Days & Times    Room    Instructor    Start/End Date",
+  "6360",
+  "005",
+  "LEC",
+  "TTh 8:30AM - 9:50AM",
+  "TBA",
+  "To be Announced",
+  "10/09/2026 - 09/12/2026",
+  "CS 145 - Designing Func Programs (Adv)",
+  "Status    Units    Grading    Grade    Deadlines",
+  "Enrolled",
+  "0.50",
+  "Numeric Grading Basis",
+  "Class Nbr    Section    Component    Days & Times    Room    Instructor    Start/End Date",
+  "6346",
+  "002",
+  "LEC",
+  "TTh 1:00PM - 2:20PM",
+  "MC 2054",
+  "A Lecturer",
+  "09/09/2026 - 08/12/2026",
+  "6523",
+  "201",
+  "TST",
+  "Th 7:00PM - 8:50PM",
+  "TBA",
+  "A Proctor",
+  "08/10/2026 - 08/10/2026",
+  " ",
+  "     ",
+  " ",
+  "M 7:00PM - 8:50PM",
+  "TBA",
+  "A Proctor",
+  "09/11/2026 - 09/11/2026",
+  "MTHEL 99 - First-Year Math Readiness",
+  "Status    Units    Grading    Grade    Deadlines",
+  "Enrolled",
+  "0.00",
+  "Credit / Non-Credit Basis",
+  "Class Nbr    Section    Component    Days & Times    Room    Instructor    Start/End Date",
+  "6420",
+  "001",
+  "LEC",
+  "TBA",
+  "ONLN - Online",
+  "To be Announced",
+  "09/09/2026 - 08/12/2026",
+  "Printer Friendly Page",
+  "Go to top iconGo to top",
+].join("\n");
+
+describe("a real Quest paste, one cell per line", () => {
+  const result = parseQuestSchedule(VERTICAL_PASTE);
+
+  it("reads every course rather than none", () => {
+    expect(result.courses.map((c) => `${c.subject} ${c.catalog}`)).toEqual([
+      "BUS 111W",
+      "CS 145",
+      "MTHEL 99",
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("stitches the seven stacked cells back into one class row", () => {
+    const [section] = result.courses[0].sections;
+    expect(section.classNumber).toBe(6360);
+    expect(section.sectionCode).toBe("005");
+    expect(section.component).toBe("LEC");
+    expect(section.instructor).toBeNull(); // "To be Announced" is TBA
+    expect(section.meetings).toHaveLength(2); // TTh
+    expect(section.meetings[0]).toMatchObject({ weekday: 2, startMin: 510, endMin: 590 });
+  });
+
+  it("reads the whole paste as DD/MM once any row settles it", () => {
+    // 10/09/2026 - 09/12/2026 only runs forwards read day-first.
+    const [bus] = result.courses[0].sections;
+    expect(bus.startDate).toBe("2026-09-10");
+    expect(bus.endDate).toBe("2026-12-09");
+  });
+
+  it("applies that reading to a single-day row that cannot settle itself", () => {
+    // 08/10/2026 is equally 8 October and 10 August in isolation. Deciding it
+    // alone and defaulting to MM/DD put a Thursday midterm in August; the rest
+    // of the paste says day-first, and 2026-10-08 really is a Thursday.
+    const tst = result.courses[1].sections.find((s) => s.component === "TST")!;
+    expect(tst.startDate).toBe("2026-10-08");
+    expect(new Date(`${tst.startDate}T12:00:00Z`).getUTCDay()).toBe(4);
+  });
+
+  it("attaches a second meeting block to the section above it", () => {
+    const tst = result.courses[1].sections.find((s) => s.component === "TST")!;
+    expect(tst.meetings.map((m) => m.weekday)).toEqual([4, 1]);
+  });
+
+  it("treats `ONLN - Online` as a room, not an instructor", () => {
+    const [section] = result.courses[2].sections;
+    expect(section.instructor).toBeNull();
+    expect(section.meetings).toEqual([]); // Days & Times was TBA
+  });
+
+  it("keeps a term code despite the one-day midterm rows", () => {
+    expect(result.termCode).toBe("1269");
+  });
+
+  it("ignores the surrounding page chrome without warning about it", () => {
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe("date order does not leak between pastes", () => {
+  it("still reads an unambiguous MM/DD paste month-first", () => {
+    // The paste-wide vote must not turn a US-format account into DD/MM.
+    const paste = [
+      "CS 135 - Designing Functional Programs",
+      "4280\t001\tLEC\tMWF 10:30AM-11:20AM\tMC 4020\tJ Smith\t09/08/2026 - 12/02/2026",
+      "4281\t101\tTUT\tTh 2:30PM-3:20PM\tMC 4021\tTBA\t10/15/2026 - 10/15/2026",
+    ].join("\n");
+    const { courses } = parseQuestSchedule(paste);
+    expect(courses[0].sections[0].startDate).toBe("2026-09-08");
+    // 10/15 can only be MM/DD, and the ambiguous rows follow it.
+    expect(courses[0].sections[1].startDate).toBe("2026-10-15");
+  });
+});
