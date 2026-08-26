@@ -280,6 +280,33 @@ export function SignInFlow() {
             </button>
           </div>
 
+          {/*
+            A code that never arrives is the most likely way to lose somebody,
+            and it looks identical to the app being broken. Quest-age domains
+            get filtered, so say the useful thing plainly rather than leaving
+            them staring at an empty inbox.
+          */}
+          <details className="group">
+            <summary className="cursor-pointer list-none text-[14px] text-[var(--ink-soft)] underline-offset-2 hover:underline">
+              Didn&rsquo;t get it?
+            </summary>
+            <div className="mt-3 space-y-2.5 rounded-[10px] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-3 text-[13px] leading-relaxed text-[var(--ink-soft)]">
+              <p>
+                <strong className="font-semibold text-[var(--ink)]">Check your spam or junk folder.</strong>{" "}
+                Honk is new, so mail from it often lands there the first time. Marking it
+                &ldquo;not spam&rdquo; fixes it for everyone after you.
+              </p>
+              <p>
+                Give it a minute. It normally arrives in seconds, but a first message to a
+                university address can be held briefly.
+              </p>
+              <p>
+                Still nothing? Send another below, or use a different address — the code
+                works from any device.
+              </p>
+            </div>
+          </details>
+
           <button
             className="text-[14px] text-[var(--ink-soft)] underline-offset-2 hover:underline"
             onClick={() => {

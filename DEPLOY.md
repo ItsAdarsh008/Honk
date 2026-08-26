@@ -1,8 +1,9 @@
 # Deploying Honk
 
-Honk is deployed and configured. Everything that could be automated is done;
-what is left needs a person. This is that list, what is already standing, and
-how to check it.
+Honk is deployed and configured. One thing is still broken, and it is not in
+the code: sign-in emails are accepted by the receiving server and then
+filtered before anyone sees them. This is that problem, what is already
+standing, and how to check it.
 
 ---
 
@@ -13,10 +14,11 @@ how to check it.
 | Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
 | Privacy integration tests | ✅ 12/12 passing against the live database |
 | Deployed to Vercel | ✅ live at `honk-loo.vercel.app`, smoke test 20/20 |
-| Full suite | ✅ 165 tests, typecheck and build clean |
+| Full suite | ✅ 174 tests, typecheck and build clean |
 | Vercel framework preset | ✅ pinned in `vercel.json` |
 | Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
-| Sending domain in Resend | ✅ `send.adarshthoduvakkal.com` verified, test send delivered |
+| Sending domain in Resend | ✅ `send.adarshthoduvakkal.com` verified, DMARC at p=quarantine |
+| **Mail reaching an inbox** | ❌ **accepted then filtered, by Gmail and Waterloo alike — the one blocker** |
 | `DATABASE_URL` in Vercel | ✅ set for Production and Preview |
 | `RESEND_API_KEY` in Vercel | ✅ set for Production and Preview |
 | `EMAIL_FROM` | ✅ `Honk <hello@send.adarshthoduvakkal.com>` |
@@ -26,58 +28,105 @@ how to check it.
 
 ## What is left
 
-**Nothing that can be automated.** The deploy is complete: all five environment
-variables are set for Production and Preview, `send.adarshthoduvakkal.com` is
-verified in Resend, a test send from `hello@send.adarshthoduvakkal.com` came
-back `delivered`, and the smoke test passes 20/20 against
-`honk-loo.vercel.app`.
+**Sign-in emails are being delivered and then filtered.** Everything else is
+done and deployed. This is the one thing between Honk and other people using
+it, and it is not a bug you can fix by changing code.
 
-What remains is four checks that need a human, and the first one is the reason
-the rest of this document exists.
+### What is actually happening
 
-### 1. A code arriving in a real inbox
+Three sends, three accepted, none seen:
 
-Sign in with an `@uwaterloo.ca` address **that is not yours**. Resend returns
-200 whether or not mail is deliverable, so this is the only thing that proves
-sign-in works for somebody who is not you. The verified domain and the
-`delivered` test send make this very likely to pass — they do not make it
-certain, because neither of them exercised Honk's own send path end to end.
+| | |
+|---|---|
+| `athoduva@uwaterloo.ca` | `250 OK`, never reached the mailbox — not Inbox, not Junk, not in search |
+| `athoduva@uwaterloo.ca` | same, six minutes later |
+| a Gmail address | `250 OK`, filtered |
 
-While you are there, set `SMOKE_EMAIL` to that address so the smoke test can
-check the accept side of the gate on future runs:
+Authentication is not the problem and never was:
 
-```bash
-SMOKE_EMAIL=someone@uwaterloo.ca npm run smoke -- https://honk-loo.vercel.app
+```
+DKIM    verified   resend._domainkey.send.adarshthoduvakkal.com
+SPF     verified   send.send.adarshthoduvakkal.com
+MX      verified   send.send.adarshthoduvakkal.com
+DMARC   published  _dmarc.send.adarshthoduvakkal.com  (p=quarantine)
 ```
 
-That takes the run from 20 checks to 21. Leave it unset and the check is
-skipped rather than sending to a made-up address, which would hard-bounce.
+Gmail's own 2026 sender rules are fully met, and transactional mail is exempt
+from the one-click-unsubscribe requirement. What is missing is **reputation**.
+The domain first sent mail on 26 August 2026 and has sent five messages ever.
+A six-digit code from a domain with no history is shaped exactly like the
+phishing that filters are tuned hardest against, and Gmail and Waterloo both
+made the same call.
 
-### 2. The paste survives sign-in
+Waterloo is worth knowing about specifically: `uwaterloo.ca` MX points at
+`mx1.hc503-62.ca.iphmx.com`, which is **Cisco Secure Email**, with Microsoft
+365 behind it. So the quarantine holding those codes is Cisco's, not
+Microsoft's — `security.microsoft.com/quarantine` will show nothing.
 
-Paste before signing in; after verifying, the schedule should be on `/home`
-without pasting again.
+### What was changed in response
 
-### 3. Two accounts, same course
+- **The email stopped looking like phishing.** The subject led with a bare
+  number (`481902 is your Honk code`); it now leads with a word. The body says
+  what Honk is, why the message arrived, and links to the real site, and the
+  text and HTML halves say the same things. A unique `X-Entity-Ref-ID` per send
+  stops Gmail threading a new code underneath an old one.
+- **DMARC went to `p=quarantine`** with strict alignment. Only Resend sends
+  from this subdomain and it aligns on both SPF and DKIM, so nothing legitimate
+  is at risk, and Gmail expects progression past `p=none`.
+- **The sign-in screen now has a "Didn't get it?" panel** telling students to
+  check spam and mark the message *not spam*. That last part matters more than
+  it sounds: recipient engagement is the strongest reputation signal there is,
+  so every student who does it improves delivery for the next one.
 
-Neither should see the other until both turn discoverability on, and shared
-gaps should appear only after a request is accepted. Then block one from the
-other and confirm they vanish from both rosters and the blocked side is told
-nothing. The integration tests cover this, but it is worth ten minutes by hand
-before real students are on it.
+None of that outweighs reputation. It stops the content counting against a
+domain that has no credit to spend, which is all code can do here.
 
-### 4. The link preview
+### What you need to do
 
-Paste `https://honk-loo.vercel.app` into iMessage or a Slack DM and look at the
-card.
+**1. Warm the domain up. This is the fix — everything else is a detail.**
 
-### Then: the parser
+Reputation is earned by consistent low volume with real engagement. Send ten
+to twenty codes over the next several days to people who will actually open
+them, and ask each of them to drag it out of spam and mark it *not spam*. Do
+not go from five messages to a frosh-week spike; that pattern is itself the
+spam signature.
 
-The highest-risk unknown left in the project is not the deploy. It is that the
-parser has never seen a real Quest paste. Collect ~10 across different
-faculties on day one and turn every failure into a test case. `CHANGELOG.md`
-ranks the six failure modes expected; two fail silently rather than warning, so
-check those by hand first.
+**2. Find the Waterloo quarantine and release what is in it.**
+
+Cisco Secure Email sends periodic quarantine digest emails with a release link.
+Search Waterloo mail for "quarantine" or "spam digest". Releasing a message is
+also a positive signal.
+
+**3. Open a ticket with IST — `helpdesk@uwaterloo.ca`.**
+
+The evidence is unusually strong, so lead with it:
+
+```
+Sending domain: send.adarshthoduvakkal.com   (SPF, DKIM, DMARC all pass)
+Provider:       Resend / Amazon SES us-east-1
+Recipient:      athoduva@uwaterloo.ca
+2026-08-26 06:04:23 UTC   id 058c0daa-6dc8-416c-bc85-f256c302263c
+2026-08-26 06:10:22 UTC   id 5f3d0a42-20c6-4594-8075-062b2986b07d
+Both accepted with 250 by mx*.hc503-62.ca.iphmx.com; neither reached the mailbox.
+Request: allowlist the domain for a student project, or advise what is required.
+```
+
+**4. Re-test in a few days, not in an hour.** Reputation moves on the scale of
+days. `npm run smoke` will not tell you — it checks that the endpoint answers,
+not that mail arrives. Watch the Resend dashboard and a real inbox.
+
+### The decision to make before frosh week
+
+If mail is still being filtered a week from now, **email is the wrong hinge for
+this product.** The entire app gates on a channel you do not control, and the
+failure is invisible from your side: Resend reports `delivered` either way.
+
+Waterloo runs Microsoft 365, so signing in with **Entra OAuth restricted to the
+`uwaterloo.ca` tenant** would prove Waterloo membership with no email in the
+path at all. It is a real change and today's evidence does not force it — and
+it may need tenant admin consent from IST, which is not obviously faster than
+an allowlist. But it removes the risk rather than mitigating it, and that
+choice is much better made in August than discovered in September.
 
 ---
 
