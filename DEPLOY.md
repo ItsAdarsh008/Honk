@@ -11,8 +11,8 @@ how to check it.
 |---|---|
 | Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
 | Privacy integration tests | ✅ 12/12 passing against the live database |
-| Deployed to Vercel | ✅ live at `honk-one.vercel.app`, smoke test 21/21 |
-| Full suite | ✅ 155 tests, typecheck and build clean |
+| Deployed to Vercel | ✅ live at `honk-one.vercel.app`, smoke test 20/20 |
+| Full suite | ✅ 165 tests, typecheck and build clean |
 | Vercel framework preset | ✅ pinned in `vercel.json` |
 | Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
 | **Sending domain in Resend** | ❌ **the one hard blocker** |
@@ -25,7 +25,7 @@ how to check it.
 **One thing: verify a sending domain in Resend.** Everything else in this
 section has been done — the code is pushed, `DATABASE_URL` is set for
 Production and Preview, the app is deployed at `honk-one.vercel.app`, and the
-smoke test passes 21/21.
+smoke test passes 20/20.
 
 ### Verify a sending domain in Resend
 
@@ -91,7 +91,7 @@ the bare value anyway.
 npm run smoke -- https://honk-one.vercel.app
 ```
 
-21 automated checks, exits non-zero if any fail. Then the four manual ones
+20 automated checks, exits non-zero if any fail — 21 with `SMOKE_EMAIL` set. Then the four manual ones
 under "What the script cannot check" — the first is signing in with a Waterloo
 address **that is not yours**, which is the only way to catch a Resend problem.
 
@@ -114,13 +114,14 @@ Node 20 or newer. The app was built and tested on Node 24.
 
 ### Environment variables
 
-These four are everything the code reads:
+These five are everything the code reads:
 
 | Variable | Required | What happens without it |
 |---|---|---|
 | `DATABASE_URL` | **Yes** | Pasting still works; accounts, saving and every screen behind sign-in return a plain "accounts are switched off" message rather than an error |
 | `RESEND_API_KEY` | **Yes in production** | Codes print to the **server console** instead of being emailed — fine locally, useless once deployed |
 | `EMAIL_FROM` | Recommended | Falls back to `Honk <onboarding@resend.dev>`, which can only send to your own address |
+| `EMAIL_DAILY_CAP` | **No** | Defaults to 100, the Resend free tier. See "Running out of codes" below |
 | `NEXT_PUBLIC_SITE_URL` | **No** | Falls back to Vercel's own `VERCEL_PROJECT_PRODUCTION_URL`, then `VERCEL_URL`, then localhost. On Vercel it resolves correctly unset — set it only for a custom domain |
 
 `NEXT_PUBLIC_SITE_URL` is the only one exposed to the browser, and it holds
@@ -165,6 +166,37 @@ database. It is the right tool for standing this up now. Once real students
 have rows in there, switch to generated migrations (`npm run db:generate`,
 committed to the repo) so you can review a change before it runs.
 
+### Running out of codes
+
+Resend's free tier stops at 100 messages a day. Left alone, the 101st student
+sees "That didn't send" on a form that looks broken — during frosh week that is
+indistinguishable from the app being down, and they don't come back.
+
+So Honk counts its own sends over a rolling 24 hours and refuses just before
+the provider would. `/api/auth/request-code` returns `503` with
+`reason: "at_capacity"` and a `Retry-After`, and the sign-in screen swaps the
+form for a card that says what happened, when to come back, and that the pasted
+schedule is still held in the tab. The paste flow itself never depended on
+sign-in, so the week still renders.
+
+`EMAIL_DAILY_CAP` raises the ceiling — set it to match the plan if you upgrade.
+It is ignored with no `RESEND_API_KEY`, since the console has no quota. If the
+provider's own limit somehow trips first, that error is classified and shown as
+the same card rather than a generic failure.
+
+The daily cap is also the only thing bounding abuse. `/api/auth/request-code`
+sends mail to any `@uwaterloo.ca` address without authentication, and the
+per-email (5/hr) and per-IP (20/hr) limits do not stop somebody with a proxy
+pool. The cost of that is small — Resend is not metered per message on the free
+tier — but the **bounce rate** is not: made-up addresses hard-bounce, and above
+roughly 5% a provider puts the account under review, which switches sign-in off
+for everyone. A global ceiling is what keeps that bounded.
+
+For the same reason `npm run smoke` no longer sends to a made-up address. Set
+`SMOKE_EMAIL` to a real inbox you can read to check the accept side of the
+gate; without it that one check is skipped and the run reports 20 rather than
+21.
+
 ### Verify the privacy rules actually hold
 
 The 12 integration tests in `src/lib/overlap/queries.integration.test.ts`
@@ -176,8 +208,8 @@ They are skipped unless `DATABASE_URL` is in the environment, and vitest does
 not read `.env.local`, so pass it explicitly:
 
 ```bash
-npm test                                   # 143 unit tests, 12 integration skipped
-DATABASE_URL=postgres://... npm test       # all 155
+npm test                                   # 153 unit tests, 12 integration skipped
+DATABASE_URL=postgres://... npm test       # all 165
 ```
 
 That they are opt-in is deliberate. They create and delete real users, so
@@ -251,7 +283,7 @@ Most of this is automated. Point the script at the deployment:
 npm run smoke -- https://honk-one.vercel.app
 ```
 
-It runs 21 checks and exits non-zero if any fail, so it can gate a deploy in
+It runs 20 checks and exits non-zero if any fail, so it can gate a deploy in
 CI. It covers the paste box rendering with no account, invite links landing on
 the paste screen rather than a signup wall, `/home` and `/settings` redirecting
 a signed-out visitor, all three icons serving, the OG image being an absolute
@@ -327,7 +359,7 @@ on it:
   Resend. This is the one remaining hard blocker — see "What is left" above.
 - ~~The deploy has never been exercised end to end.~~ **Done** — the app is
   live at `honk-one.vercel.app` with `DATABASE_URL` wired, and the smoke test
-  passes 21/21 against it.
+  passes 20/20 against it.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
 
 Next was bumped 15.5.4 → 15.5.9 for a React Server Components CVE, and the full

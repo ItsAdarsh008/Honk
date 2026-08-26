@@ -12,10 +12,30 @@ const FROM = process.env.EMAIL_FROM ?? "Honk <onboarding@resend.dev>";
 
 export type DeliveryMode = "email" | "console";
 
+/**
+ * `capacity` means the provider refused because a quota or rate limit was hit,
+ * which is a different thing to tell the user than a transient failure: one is
+ * "come back later", the other is "try again now". Honk's own daily cap should
+ * trip first, so this is the backstop for a cap set higher than the plan
+ * actually allows.
+ */
+export type DeliveryFailure = "capacity" | "other";
+
 export interface DeliveryResult {
   mode: DeliveryMode;
   ok: boolean;
   error?: string;
+  reason?: DeliveryFailure;
+}
+
+const CAPACITY_PATTERN = /rate.?limit|quota|too many|daily limit|exceeded/i;
+
+export function classifyFailure(message: string): DeliveryFailure {
+  return CAPACITY_PATTERN.test(message) ? "capacity" : "other";
+}
+
+function failed(message: string): DeliveryResult {
+  return { mode: "email", ok: false, error: message, reason: classifyFailure(message) };
 }
 
 export function deliveryMode(): DeliveryMode {
@@ -46,10 +66,10 @@ export async function sendLoginCode(email: string, code: string): Promise<Delive
       ].join("\n"),
       html: codeEmailHtml(code),
     });
-    if (error) return { mode: "email", ok: false, error: error.message };
+    if (error) return failed(error.message);
     return { mode: "email", ok: true };
   } catch (err) {
-    return { mode: "email", ok: false, error: err instanceof Error ? err.message : "send failed" };
+    return failed(err instanceof Error ? err.message : "send failed");
   }
 }
 

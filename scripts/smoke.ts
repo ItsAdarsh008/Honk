@@ -104,6 +104,13 @@ async function main() {
 
   // ---- the Waterloo gate ----------------------------------------------
   const json = { "content-type": "application/json" };
+
+  // Whether persistence is configured, asked of a route that sends nothing.
+  // `requireDatabase` runs before the session check, so 503 means no database
+  // and 401 means there is one.
+  const dbProbe = await get("/api/classmates?sectionId=1");
+  const dbWired = dbProbe.status !== 503;
+
   const outsider = await get("/api/auth/request-code", {
     method: "POST",
     headers: json,
@@ -118,17 +125,36 @@ async function main() {
   });
   record(lookalike.status === 400, "lookalike domain is refused", `${lookalike.status}`);
 
-  const insider = await get("/api/auth/request-code", {
-    method: "POST",
-    headers: json,
-    body: JSON.stringify({ email: "smoketest@uwaterloo.ca" }),
-  });
-  const dbWired = insider.status !== 503;
-  record(
-    insider.status === 200 || insider.status === 429 || insider.status === 503,
-    "Waterloo email is accepted",
-    `${insider.status}${insider.status === 503 ? " (no database configured)" : ""}`,
-  );
+  // Accepting an address *sends a real email*. Against a made-up @uwaterloo.ca
+  // that is a hard bounce, and a handful of those on a young domain is enough
+  // to put the Resend account under review — which switches sign-in off for
+  // everyone. So this check runs only against an address someone actually
+  // reads, named explicitly.
+  const smokeEmail = process.env.SMOKE_EMAIL;
+  if (!smokeEmail) {
+    notes.push(
+      "SMOKE_EMAIL is unset, so the accept side of the Waterloo gate was not checked. " +
+        "Set it to a real @uwaterloo.ca inbox you can read — sending to a made-up one " +
+        "hard-bounces and damages deliverability for everybody.",
+    );
+    console.log("  skip  Waterloo email is accepted  — set SMOKE_EMAIL to a real inbox");
+  } else {
+    const insider = await get("/api/auth/request-code", {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ email: smokeEmail }),
+    });
+    const body = (await insider.json().catch(() => ({}))) as { reason?: string };
+    const atCapacity = insider.status === 503 && body.reason === "at_capacity";
+    if (atCapacity) {
+      notes.push("The deployment is at its daily sign-in email cap, so no code was sent.");
+    }
+    record(
+      insider.status === 200 || insider.status === 429 || atCapacity,
+      "Waterloo email is accepted",
+      `${insider.status}${atCapacity ? " (at daily cap)" : ""}`,
+    );
+  }
 
   // ---- nothing sensitive without a session ----------------------------
   for (const [name, path, init] of [

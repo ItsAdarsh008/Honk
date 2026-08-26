@@ -8,10 +8,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { clearPending, readPending } from "@/lib/pending";
+import { formatWait } from "@/lib/wait";
 
-type Step = "email" | "code" | "profile";
+type Step = "email" | "code" | "profile" | "capacity";
+
+/** What a code request did, so each caller can react in its own way. */
+type RequestOutcome = "sent" | "capacity" | "error";
 
 export function SignInFlow() {
   const router = useRouter();
@@ -24,6 +29,7 @@ export function SignInFlow() {
   const [error, setError] = useState<string | null>(null);
   const [devMode, setDevMode] = useState(false);
   const [hasPending, setHasPending] = useState(false);
+  const [retryMinutes, setRetryMinutes] = useState<number | null>(null);
 
   const codeRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -52,49 +58,64 @@ export function SignInFlow() {
     router.refresh();
   }, [router]);
 
-  const requestCode = useCallback(
-    async (address: string) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const response = await fetch("/api/auth/request-code", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: address }),
-        });
-        const body = (await response.json().catch(() => ({}))) as {
-          error?: string;
-          mode?: string;
-        };
-        if (!response.ok) {
-          setError(body.error ?? "That didn't send. Try again.");
-          setBusy(false);
-          return false;
+  const requestCode = useCallback(async (address: string): Promise<RequestOutcome> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/auth/request-code", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: address }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        mode?: string;
+        reason?: string;
+        retryAfterMinutes?: number;
+      };
+      if (!response.ok) {
+        setBusy(false);
+        if (body.reason === "at_capacity") {
+          setRetryMinutes(body.retryAfterMinutes ?? null);
+          setError(capacityLine(body.retryAfterMinutes));
+          return "capacity";
         }
-        setDevMode(body.mode === "console");
-        setBusy(false);
-        return true;
-      } catch {
-        setError("That didn't send. Check your connection and try again.");
-        setBusy(false);
-        return false;
+        setError(body.error ?? "That didn't send. Try again.");
+        return "error";
       }
-    },
-    [],
-  );
+      setDevMode(body.mode === "console");
+      setBusy(false);
+      return "sent";
+    } catch {
+      setError("That didn't send. Check your connection and try again.");
+      setBusy(false);
+      return "error";
+    }
+  }, []);
+
+  /**
+   * Request a code and move to whichever step the outcome calls for. Also the
+   * capacity card's retry — the window is rolling, so a slot may have freed.
+   */
+  const sendCode = useCallback(async () => {
+    const outcome = await requestCode(email);
+    if (outcome === "sent") {
+      setStep("code");
+      setCode("");
+      submittedCode.current = "";
+      requestAnimationFrame(() => codeRef.current?.focus());
+      return;
+    }
+    // Nothing was sent and nothing is coming, so the form would be a lie.
+    if (outcome === "capacity") setStep("capacity");
+  }, [email, requestCode]);
 
   const submitEmail = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
-      const sent = await requestCode(email);
-      if (sent) {
-        setStep("code");
-        setCode("");
-        submittedCode.current = "";
-        requestAnimationFrame(() => codeRef.current?.focus());
-      }
+      await sendCode();
     },
-    [email, requestCode],
+    [sendCode],
   );
 
   const submitCode = useCallback(
@@ -272,6 +293,48 @@ export function SignInFlow() {
         </div>
       )}
 
+      {step === "capacity" && (
+        <div className="space-y-5">
+          <div className="space-y-1.5">
+            <h1 className="text-[22px] font-semibold tracking-[-0.015em]">
+              Honk is out of codes for today
+            </h1>
+            <p className="text-[15px] text-[var(--ink-soft)]">
+              There is a daily limit on sign-in emails and today&rsquo;s are gone. Nothing
+              is broken and nothing is lost — sign-in opens back up{" "}
+              {formatWait(retryMinutes) ? `in ${formatWait(retryMinutes)}` : "shortly"}.
+            </p>
+          </div>
+
+          {hasPending && (
+            <p className="rounded-[10px] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2.5 text-[13px] text-[var(--ink-soft)]">
+              Your pasted schedule is still held in this tab. Leave it open and it saves
+              the moment you sign in.
+            </p>
+          )}
+
+          <ErrorText error={error} />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="btn btn-primary flex-1"
+              onClick={() => void sendCode()}
+              disabled={busy}
+            >
+              {busy ? "Checking…" : "Try again"}
+            </button>
+            <Link href="/paste" className="btn btn-quiet">
+              See my week
+            </Link>
+          </div>
+
+          <p className="text-[13px] text-[var(--ink-faint)]">
+            Your week renders without an account. Signing in is only needed to save it
+            and to see who you share classes with.
+          </p>
+        </div>
+      )}
+
       {step === "profile" && (
         <form onSubmit={submitProfile} className="space-y-5">
           <div className="space-y-1.5">
@@ -339,4 +402,12 @@ function ErrorText({ error }: { error: string | null }) {
       {error}
     </p>
   );
+}
+
+/** The inline version, for when a code is already in the user's inbox. */
+function capacityLine(retryAfterMinutes: number | undefined): string {
+  const wait = formatWait(retryAfterMinutes);
+  return wait
+    ? `Honk is out of sign-in codes for today. Try again in ${wait}.`
+    : "Honk is out of sign-in codes for today. Try again later.";
 }
