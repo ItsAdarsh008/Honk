@@ -11,7 +11,7 @@ how to check it.
 |---|---|
 | Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
 | Privacy integration tests | ✅ 12/12 passing against the live database |
-| Deployed to Vercel | ✅ live at `honk-one.vercel.app`, smoke test 20/20 |
+| Deployed to Vercel | ✅ live at `honk-loo.vercel.app`, smoke test 20/20 |
 | Full suite | ✅ 165 tests, typecheck and build clean |
 | Vercel framework preset | ✅ pinned in `vercel.json` |
 | Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
@@ -24,7 +24,7 @@ how to check it.
 
 **One thing: verify a sending domain in Resend.** Everything else in this
 section has been done — the code is pushed, `DATABASE_URL` is set for
-Production and Preview, the app is deployed at `honk-one.vercel.app`, and the
+Production and Preview, the app is deployed at `honk-loo.vercel.app`, and the
 smoke test passes 20/20.
 
 ### Verify a sending domain in Resend
@@ -88,7 +88,7 @@ the bare value anyway.
 ### Checking it
 
 ```bash
-npm run smoke -- https://honk-one.vercel.app
+npm run smoke -- https://honk-loo.vercel.app
 ```
 
 20 automated checks, exits non-zero if any fail — 21 with `SMOKE_EMAIL` set. Then the four manual ones
@@ -265,6 +265,19 @@ Production **and** Preview. Deploy.
 They are read at build time, so a value added after a deploy does not take
 effect until the next one.
 
+### Pin the domain before sharing anything
+
+Vercel has already moved this project's canonical hostname once, from
+`honk-one.vercel.app` to `honk-loo.vercel.app`, with the old one left
+307-redirecting to the new. `siteUrl()` follows `VERCEL_PROJECT_PRODUCTION_URL`
+so it keeps up on its own, but two things do not: invite links already sent
+embed the origin they were generated on, and some link-preview scrapers do not
+follow redirects.
+
+Set `NEXT_PUBLIC_SITE_URL` to whichever hostname you intend to give students
+and it stops mattering. The smoke test warns when `og:image` and the tested
+origin disagree, which is what caught the move.
+
 ### Custom domain — optional
 
 `*.vercel.app` works fine and needs no configuration. If you later want a
@@ -280,7 +293,7 @@ on.
 Most of this is automated. Point the script at the deployment:
 
 ```bash
-npm run smoke -- https://honk-one.vercel.app
+npm run smoke -- https://honk-loo.vercel.app
 ```
 
 It runs 20 checks and exits non-zero if any fail, so it can gate a deploy in
@@ -358,7 +371,7 @@ on it:
   working (a code is issued and printed), but no mail has been sent through
   Resend. This is the one remaining hard blocker — see "What is left" above.
 - ~~The deploy has never been exercised end to end.~~ **Done** — the app is
-  live at `honk-one.vercel.app` with `DATABASE_URL` wired, and the smoke test
+  live at `honk-loo.vercel.app` with `DATABASE_URL` wired, and the smoke test
   passes 20/20 against it.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
 
