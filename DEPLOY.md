@@ -13,17 +13,18 @@ standing, and how to check it.
 |---|---|
 | Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
 | Privacy integration tests | ✅ 12/12 passing against the live database |
-| Deployed to Vercel | ✅ live at `honk-loo.vercel.app`, smoke test 20/20 |
+| Deployed to Vercel | ✅ live at `honk.adarshthoduvakkal.com`, smoke test 20/20 |
 | Full suite | ✅ 181 tests, typecheck and build clean |
 | Vercel framework preset | ✅ pinned in `vercel.json` |
-| Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
+| Hosting domain | ✅ `honk.adarshthoduvakkal.com`, with `honk-loo.vercel.app` still working |
 | Sending domain in Resend | ✅ `send.adarshthoduvakkal.com` verified, DMARC at p=quarantine |
 | Mail reaching an inbox | ⚠️ accepted then filtered; one of five arrived, in the inbox |
 | **Sign in with Waterloo (Entra)** | ❌ **code built and deployed — needs the app registration** |
 | `DATABASE_URL` in Vercel | ✅ set for Production and Preview |
 | `RESEND_API_KEY` in Vercel | ✅ set for Production and Preview |
 | `EMAIL_FROM` | ✅ `Honk <hello@send.adarshthoduvakkal.com>` |
-| `NEXT_PUBLIC_SITE_URL` | ✅ pinned to `honk-loo.vercel.app` |
+| `NEXT_PUBLIC_SITE_URL` | ✅ pinned to `honk.adarshthoduvakkal.com` |
+| Sending domain matches site domain | ✅ both under `adarshthoduvakkal.com`, null MX on the sender |
 
 ---
 
@@ -144,7 +145,7 @@ account.
    - Supported account types: **Accounts in any organizational directory
      (multitenant)**. Honk is registered in your own tenant but signs in
      Waterloo accounts, which is what multitenant means here.
-   - Redirect URI: **Web** → `https://honk-loo.vercel.app/api/auth/entra/callback`
+   - Redirect URI: **Web** → `https://honk.adarshthoduvakkal.com/api/auth/entra/callback`
 2. **Certificates & secrets → New client secret.** Copy the *value*, not the id.
    It is shown once.
 3. **API permissions.** The defaults are right: `openid`, `profile`, `email`,
@@ -295,21 +296,54 @@ already exists and this is what it is for.
 
 ### Still worth fixing, in rough order of value
 
-1. **The From address cannot receive replies.** `send.adarshthoduvakkal.com`
-   has no MX record, so anything a student sends back bounces. A sender nobody
-   can reply to is both a small negative signal and a real dead end for someone
-   confused. Add an MX with forwarding, or set a `Reply-To` that works.
-2. **The link domain does not match the sending domain.** Mail comes from
-   `send.adarshthoduvakkal.com` and links to `honk-loo.vercel.app`. Filters
-   notice the mismatch. Pointing a subdomain of the same root at the app —
-   `honk.adarshthoduvakkal.com` — aligns them and is a stronger signal than
-   anything else on this list.
-3. **There is no feedback loop.** Honk cannot currently tell a delivered code
+1. ~~The From address cannot receive replies.~~ ~~The link domain does not match
+   the sending domain.~~ **Both done** — the two sections below say what changed.
+2. **There is no feedback loop.** Honk cannot currently tell a delivered code
    from a quarantined one; `delivered` is all the API reports. A Resend webhook
    recording bounces, complaints and delays would make failure visible instead
    of silent, which is the thing that made this take an evening to notice.
-4. **Google Postmaster Tools.** Free reputation dashboard, but only for Gmail —
+3. **Google Postmaster Tools.** Free reputation dashboard, but only for Gmail —
    marginal here, given who the recipients are.
+
+### The sending domain and the site now match
+
+Mail comes from `hello@send.adarshthoduvakkal.com` and the links in it point at
+`honk.adarshthoduvakkal.com`. Same root domain, which is one fewer thing for a
+filter to hold against a sender it does not know — a message whose links go
+somewhere unrelated to where it came from is a phishing shape.
+
+`honk-loo.vercel.app` still resolves and still works. `NEXT_PUBLIC_SITE_URL` is
+pinned to the custom domain, so that is what OG tags and invite links embed.
+
+**Two things that must follow this.** The Entra redirect URI has to be
+registered as `https://honk.adarshthoduvakkal.com/api/auth/entra/callback`,
+exactly — if the app was already registered against the old hostname, add the
+new one. And any invite link generated before the switch embeds the old origin;
+harmless while nobody has one, worth knowing once people do.
+
+### Replies do not vanish any more
+
+`send.adarshthoduvakkal.com` now publishes a **null MX** (`0 .`, RFC 7505),
+which is the standards-compliant way for a send-only domain to declare that it
+never receives. An unexplained missing MX reads as suspicious; a null MX reads
+as an ordinary transactional sender. A student who replies now gets an
+immediate, clear bounce rather than silence.
+
+Bounce handling is unaffected — those go to the Return-Path domain
+`send.send.adarshthoduvakkal.com`, which keeps its own SES MX record.
+
+If you want replies to reach you, set `EMAIL_REPLY_TO` to an address you
+actually read and every code email carries it:
+
+```bash
+vercel env add EMAIL_REPLY_TO production --no-sensitive
+```
+
+That address becomes visible to every student who gets a code, so it should
+probably not be your personal one. Resend's inbound forwarding is a paid
+feature and cannot be switched on through the API; a free forwarder such as
+ImprovMX works with Vercel DNS if you would rather have `hello@` itself
+deliver, in which case replace the null MX with theirs.
 
 ### Do not buy a dedicated IP
 
@@ -510,7 +544,7 @@ effect until the next one.
 ### Pin the domain before sharing anything
 
 Vercel has already moved this project's canonical hostname once, from
-`honk-one.vercel.app` to `honk-loo.vercel.app`, with the old one left
+`honk-one.vercel.app` to `honk.adarshthoduvakkal.com`, with the old one left
 307-redirecting to the new. `siteUrl()` follows `VERCEL_PROJECT_PRODUCTION_URL`
 so it keeps up on its own, but two things do not: invite links already sent
 embed the origin they were generated on, and some link-preview scrapers do not
@@ -535,7 +569,7 @@ on.
 Most of this is automated. Point the script at the deployment:
 
 ```bash
-npm run smoke -- https://honk-loo.vercel.app
+npm run smoke -- https://honk.adarshthoduvakkal.com
 ```
 
 It runs 20 checks and exits non-zero if any fail, so it can gate a deploy in
@@ -615,7 +649,7 @@ on it:
   chain — Honk issuing a code, formatting the mail and handing it to Resend —
   landing in somebody else's inbox. That is check 1 under "What is left".
 - ~~The deploy has never been exercised end to end.~~ **Done** — the app is
-  live at `honk-loo.vercel.app` with `DATABASE_URL` wired, and the smoke test
+  live at `honk.adarshthoduvakkal.com` with `DATABASE_URL` wired, and the smoke test
   passes 20/20 against it.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
 

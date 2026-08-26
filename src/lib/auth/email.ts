@@ -13,6 +13,23 @@ import { CODE_TTL_MINUTES } from "./session";
 
 const FROM = process.env.EMAIL_FROM ?? "Honk <onboarding@resend.dev>";
 
+/**
+ * Where a reply should go.
+ *
+ * The From address cannot receive anything — `send.adarshthoduvakkal.com`
+ * publishes a null MX (RFC 7505), which is the standards-compliant way for a
+ * send-only domain to say so out loud. That is deliberate: an unexplained
+ * missing MX reads as suspicious to a filter, while a null MX reads as a
+ * transactional sender behaving normally, and a reply bounces immediately with
+ * a clear error instead of vanishing.
+ *
+ * Set `EMAIL_REPLY_TO` to an address somebody actually reads and replies land
+ * there instead. Unset, the mail simply does not invite one.
+ */
+function replyTo(): string | null {
+  return process.env.EMAIL_REPLY_TO?.trim() || null;
+}
+
 /** "about an hour", from the one constant, so the copy cannot drift from it. */
 function lifetime(): string {
   return formatWait(CODE_TTL_MINUTES) ?? `${CODE_TTL_MINUTES} minutes`;
@@ -89,6 +106,7 @@ export async function sendLoginCode(email: string, code: string): Promise<Delive
       // Gmail collapses same-subject mail into one thread, which buries a new
       // code under an old one. A unique ref per send keeps them separate.
       headers: { "X-Entity-Ref-ID": `honk-code-${code}` },
+      ...(replyTo() ? { replyTo: replyTo()! } : {}),
     });
     if (error) return failed(error.message);
     return { mode: "email", ok: true };

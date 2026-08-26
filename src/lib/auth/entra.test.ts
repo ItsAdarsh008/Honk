@@ -12,7 +12,7 @@ describe("Waterloo tenant", () => {
 
 describe("authorizeUrl", () => {
   const params = {
-    redirectUri: "https://honk-loo.vercel.app/api/auth/entra/callback",
+    redirectUri: "https://honk.adarshthoduvakkal.com/api/auth/entra/callback",
     state: "st",
     nonce: "no",
     verifier: "ve",
