@@ -14,11 +14,12 @@ standing, and how to check it.
 | Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
 | Privacy integration tests | ✅ 12/12 passing against the live database |
 | Deployed to Vercel | ✅ live at `honk-loo.vercel.app`, smoke test 20/20 |
-| Full suite | ✅ 174 tests, typecheck and build clean |
+| Full suite | ✅ 181 tests, typecheck and build clean |
 | Vercel framework preset | ✅ pinned in `vercel.json` |
 | Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
 | Sending domain in Resend | ✅ `send.adarshthoduvakkal.com` verified, DMARC at p=quarantine |
-| **Mail reaching an inbox** | ❌ **accepted then filtered, by Gmail and Waterloo alike — the one blocker** |
+| Mail reaching an inbox | ⚠️ accepted then filtered; one of five arrived, in the inbox |
+| **Sign in with Waterloo (Entra)** | ❌ **code built and deployed — needs the app registration** |
 | `DATABASE_URL` in Vercel | ✅ set for Production and Preview |
 | `RESEND_API_KEY` in Vercel | ✅ set for Production and Preview |
 | `EMAIL_FROM` | ✅ `Honk <hello@send.adarshthoduvakkal.com>` |
@@ -128,18 +129,69 @@ Request: allowlist the domain for a student project, or advise what is required.
 days. `npm run smoke` will not tell you — it checks that the endpoint answers,
 not that mail arrives. Watch the Resend dashboard and a real inbox.
 
+### Sign in with a Waterloo account — the code is built, the app registration is not
+
+This is the way out of the deliverability problem rather than a mitigation for
+it: no email in the sign-in path at all. Everything is written, tested and
+deployed, and it stays invisible until `ENTRA_CLIENT_ID` and
+`ENTRA_CLIENT_SECRET` exist — so it cannot break code sign-in in the meantime.
+
+What is left is the app registration, which needs a browser and your Microsoft
+account.
+
+1. **portal.azure.com → Microsoft Entra ID → App registrations → New.**
+   - Name: `Honk`
+   - Supported account types: **Accounts in any organizational directory
+     (multitenant)**. Honk is registered in your own tenant but signs in
+     Waterloo accounts, which is what multitenant means here.
+   - Redirect URI: **Web** → `https://honk-loo.vercel.app/api/auth/entra/callback`
+2. **Certificates & secrets → New client secret.** Copy the *value*, not the id.
+   It is shown once.
+3. **API permissions.** The defaults are right: `openid`, `profile`, `email`,
+   nothing else. Do not add Graph permissions — every extra one raises the bar
+   for consent, and consent is the thing most likely to block this.
+4. Add both to Vercel and redeploy:
+
+```bash
+vercel env add ENTRA_CLIENT_ID production --no-sensitive
+vercel env add ENTRA_CLIENT_SECRET production
+vercel env add ENTRA_CLIENT_ID preview --no-sensitive
+vercel env add ENTRA_CLIENT_SECRET preview
+```
+
+5. Open `/signin` and use the **Sign in with Waterloo** button with your own
+   `@uwaterloo.ca` account.
+
+**The one thing that decides whether this works.** Step 5 either shows a
+consent screen or says *"Need admin approval"*. Universities commonly restrict
+consent for third-party apps to verified publishers, or disable it outright. If
+you are blocked, no amount of retrying changes it — it needs IST to grant admin
+consent for the app, and Honk shows the student a plain message saying to use a
+code instead.
+
+That is still a better ask than the email one. An allowlist asks IST to trust a
+sending reputation you have to keep earning; admin consent is granted once and
+removes the failure mode permanently.
+
+**Local development.** Add a second redirect URI
+`http://localhost:3000/api/auth/entra/callback` on the same registration and
+put the two variables in `.env.local`.
+
 ### The decision to make before frosh week
 
-If mail is still being filtered a week from now, **email is the wrong hinge for
-this product.** The entire app gates on a channel you do not control, and the
-failure is invisible from your side: Resend reports `delivered` either way.
+Both sign-in paths are live. Which one is primary depends on what happens next,
+and the honest position is that neither is proven with real students yet.
 
-Waterloo runs Microsoft 365, so signing in with **Entra OAuth restricted to the
-`uwaterloo.ca` tenant** would prove Waterloo membership with no email in the
-path at all. It is a real change and today's evidence does not force it — and
-it may need tenant admin consent from IST, which is not obviously faster than
-an allowlist. But it removes the risk rather than mitigating it, and that
-choice is much better made in August than discovered in September.
+- **Waterloo sign-in works** → make it primary. One click, no waiting, nothing
+  to filter, and it proves an active Waterloo account rather than access to a
+  mailbox. Keep codes as the fallback for anyone it fails for.
+- **Consent is blocked and IST is slow** → codes stay primary, and domain
+  warm-up is the whole game. Send a few a day to real people, get every one of
+  them marked *not spam*, and re-check in a week.
+
+What should not happen is arriving at frosh week without having tested either
+one on somebody who is not you. The parser has the same problem: it has now
+seen exactly one real Quest paste.
 
 ---
 
