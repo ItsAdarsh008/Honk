@@ -21,7 +21,8 @@ import {
 } from "@/lib/time";
 import { ClassSection } from "@/components/ClassSection";
 import { PersonRow } from "@/components/PersonRow";
-import { ScheduleGrid, colorIndexFor, type GridMeeting } from "@/components/ScheduleGrid";
+import { assignCourseColors } from "@/lib/colors";
+import { ScheduleGrid, type GridMeeting } from "@/components/ScheduleGrid";
 import { ShareButton } from "@/components/ShareButton";
 import { PrivacyPrompt } from "@/components/PrivacyPrompt";
 import { PasteFlow } from "@/components/PasteFlow";
@@ -63,6 +64,10 @@ export default async function HomePage() {
     getFreeNow(user.id, termCode, now),
   ]);
 
+  const courseColors = assignCourseColors(
+    schedule.map((c) => `${c.subject} ${c.catalog}`),
+  );
+
   const meetings: GridMeeting[] = schedule.flatMap((course) =>
     course.sections.flatMap((section) =>
       section.meetings.map((meeting) => ({
@@ -72,7 +77,7 @@ export default async function HomePage() {
         location: meeting.location,
         code: `${course.subject} ${course.catalog}`,
         component: section.component,
-        colorIndex: colorIndexFor(course.subject, course.catalog),
+        colorIndex: courseColors[`${course.subject} ${course.catalog}`],
       })),
     ),
   );

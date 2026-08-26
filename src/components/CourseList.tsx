@@ -5,11 +5,12 @@
  * mono; titles and names are prose and set in the body face.
  */
 
+import { assignCourseColors } from "@/lib/colors";
 import type { ParsedCourse } from "@/lib/quest/parse";
 import { formatRange, weekdayShort } from "@/lib/time";
-import { colorIndexFor } from "./ScheduleGrid";
 
 export function CourseList({ courses }: { courses: ParsedCourse[] }) {
+  const colors = assignCourseColors(courses.map((c) => `${c.subject} ${c.catalog}`));
   return (
     <ul className="space-y-2">
       {courses.map((course) => (
@@ -19,7 +20,7 @@ export function CourseList({ courses }: { courses: ParsedCourse[] }) {
               aria-hidden="true"
               className="mt-1 h-3 w-3 shrink-0 rounded-[4px]"
               style={{
-                background: `var(--course-${colorIndexFor(course.subject, course.catalog)}-bg)`,
+                background: `var(--course-${colors[`${course.subject} ${course.catalog}`]}-bg)`,
               }}
             />
             <div className="min-w-0 flex-1">

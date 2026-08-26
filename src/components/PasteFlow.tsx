@@ -14,7 +14,8 @@ import { useRouter } from "next/navigation";
 import { parseQuestSchedule, type ParseResult } from "@/lib/quest/parse";
 import { savePending, clearPending } from "@/lib/pending";
 import { termName } from "@/lib/time";
-import { ScheduleGrid, colorIndexFor, type GridMeeting } from "./ScheduleGrid";
+import { assignCourseColors } from "@/lib/colors";
+import { ScheduleGrid, type GridMeeting } from "./ScheduleGrid";
 import { CourseList } from "./CourseList";
 
 interface Props {
@@ -156,8 +157,11 @@ function ReviewStep({
   onSave: () => void;
   onReset: () => void;
 }) {
-  const meetings = useMemo<GridMeeting[]>(
-    () =>
+  const meetings = useMemo<GridMeeting[]>(() => {
+    const colors = assignCourseColors(
+      result.courses.map((c) => `${c.subject} ${c.catalog}`),
+    );
+    return (
       result.courses.flatMap((course) =>
         course.sections.flatMap((section) =>
           section.meetings.map((meeting) => ({
@@ -167,12 +171,12 @@ function ReviewStep({
             location: meeting.location,
             code: `${course.subject} ${course.catalog}`,
             component: section.component,
-            colorIndex: colorIndexFor(course.subject, course.catalog),
+            colorIndex: colors[`${course.subject} ${course.catalog}`],
           })),
         ),
-      ),
-    [result],
-  );
+      )
+    );
+  }, [result]);
 
   const sectionCount = result.courses.reduce((n, c) => n + c.sections.length, 0);
 

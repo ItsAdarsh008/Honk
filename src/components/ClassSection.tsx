@@ -10,8 +10,8 @@
  */
 
 import { useCallback, useState } from "react";
+import { assignCourseColors } from "@/lib/colors";
 import type { ClassCount } from "@/lib/overlap/queries";
-import { colorIndexFor } from "./ScheduleGrid";
 import { PersonRow, type Person } from "./PersonRow";
 
 type LoadState = { status: "idle" } | { status: "loading" } | { status: "done"; people: Person[] };
@@ -50,6 +50,8 @@ export function ClassSection({ classes }: { classes: ClassCount[] }) {
     byCourse.set(item.courseId, [...(byCourse.get(item.courseId) ?? []), item]);
   }
 
+  const colors = assignCourseColors(classes.map((c) => `${c.subject} ${c.catalog}`));
+
   return (
     <ul className="space-y-2">
       {[...byCourse.values()].map((sections) => {
@@ -61,7 +63,7 @@ export function ClassSection({ classes }: { classes: ClassCount[] }) {
                 aria-hidden="true"
                 className="mt-1.5 h-3 w-3 shrink-0 rounded-[4px]"
                 style={{
-                  background: `var(--course-${colorIndexFor(first.subject, first.catalog)}-bg)`,
+                  background: `var(--course-${colors[`${first.subject} ${first.catalog}`]}-bg)`,
                 }}
               />
               <div className="min-w-0">

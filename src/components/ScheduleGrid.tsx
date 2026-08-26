@@ -15,8 +15,11 @@
  */
 
 import { useMemo } from "react";
+import { assignCourseColors } from "@/lib/colors";
 import { freeIntervals, type Interval } from "@/lib/overlap/intervals";
 import { formatDuration, formatRange, weekdayShort } from "@/lib/time";
+
+export { assignCourseColors };
 
 export interface GridMeeting {
   weekday: number;
@@ -41,14 +44,6 @@ interface Props {
 }
 
 const HOUR = 60;
-
-/** Deterministic, so a course keeps its colour between renders and devices. */
-export function colorIndexFor(subject: string, catalog: string): number {
-  const key = `${subject} ${catalog}`;
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-  return (hash % 6) + 1;
-}
 
 export function ScheduleGrid({ meetings, today = null, showGaps = true, showRooms = true }: Props) {
   const model = useMemo(() => build(meetings), [meetings]);
