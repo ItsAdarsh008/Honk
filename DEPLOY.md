@@ -195,6 +195,146 @@ seen exactly one real Quest paste.
 
 ---
 
+## Making the email path work
+
+Written after the first real sends were accepted and then filtered. This is
+what "instant email" actually requires, why it is not currently happening, and
+which levers move it.
+
+### The fact that changes the whole calculation
+
+**Honk only ever emails `@uwaterloo.ca` addresses.** The gate refuses everything
+else before a message is composed. So Gmail's opinion of the sending domain is
+almost irrelevant to the product — the Gmail test was a diagnostic, run to
+prove the problem was not Waterloo-specific, and it did its job.
+
+Exactly one receiver matters: `mx1.hc503-62.ca.iphmx.com`, Cisco Secure Email,
+with Microsoft 365 behind it. That is a single gatekeeper for one organisation,
+which is a much better problem than pleasing the open internet. Single
+gatekeepers can be *asked*.
+
+### What "instant" actually means
+
+Nothing needs building for speed. Resend hands to Amazon SES and SES hands to
+the receiving server in **under two seconds** — every send so far has been
+accepted that fast, and the API confirms it. Delivery latency is not the
+problem and never was.
+
+Every delay observed happened *after* the `250 OK`, inside Waterloo's gateway,
+which accepted the message and then held it. "Instant" is not a feature to
+build. It is what happens by default the moment the gateway stops holding.
+
+So the question is never "how do we make it faster". It is only ever "how does
+this sender stop being treated as unknown".
+
+### Three routes there, fastest first
+
+**1. Ask IST to allowlist the domain.** Binary, complete, and it bypasses
+reputation entirely. Cisco Secure Email is policy-driven: a safelist entry for
+`send.adarshthoduvakkal.com` means Waterloo stops scoring the sender at all.
+Because Waterloo is ~100% of Honk's recipients, this single change is the
+difference between "sometimes, eventually" and "always, instantly". Days to
+weeks, depending on IST.
+
+The ticket text and message IDs are in "What you need to do" above. Lead with
+the authentication results — SPF, DKIM and DMARC all passing is what separates
+this request from every spammer who also emails IST.
+
+**2. Warm the domain up.** No permission needed, works on every receiver at
+once, but gradual: two to six weeks for a new domain to stop being treated as
+unknown. Details below.
+
+**3. Sign in with Waterloo instead.** Removes email from the critical path
+rather than fixing it. Built and deployed; needs the app registration.
+
+These are not exclusive. Do 1 and 2 together and treat 3 as the answer if
+neither lands before term starts.
+
+### The warm-up, concretely
+
+Reputation is built by **consistent volume with real engagement**, and destroyed
+by bursts. A sender that goes 0 → 5 → 0 → 500 is indistinguishable from a
+compromised account, which is exactly the shape frosh week would produce
+without preparation.
+
+| | Codes per day | Where they should go |
+|---|---|---|
+| Days 1–3 | 5–10 | People you can ask in person to open it |
+| Days 4–7 | ~20 | Friends, floormates, a class group chat |
+| Week 2 | ~50 | Wider soft launch |
+| Week 3 | 100+ | Approaching launch volume |
+
+Roughly doubling every few days. Honk's natural volume is low — sessions last
+60 days, so it is one email per student per two months — which means these
+numbers are also a soft-launch plan, not extra work.
+
+**Engagement matters more than volume.** The strongest positive signals a
+receiver has are a human opening the message, moving it out of spam, marking it
+*not spam*, and adding the sender to contacts. For the first twenty people,
+just ask them. Twenty deliberate not-spam marks are worth more than a thousand
+ignored sends.
+
+**Use `EMAIL_DAILY_CAP` as the guardrail.** Set it to whatever the table above
+says for this week. If a spike arrives early, Honk refuses on its own terms —
+the sign-in screen shows the "out of codes for today" card and the student is
+told to come back — rather than burning reputation on a burst. That mechanism
+already exists and this is what it is for.
+
+### What would make it permanently worse
+
+- **Hard bounces.** Never send to an address that might not exist. This is why
+  `npm run smoke` no longer emails a made-up `smoketest@uwaterloo.ca` and why
+  `SMOKE_EMAIL` has to be set deliberately. Above roughly 5%, providers put the
+  account under review; the *sending* stops, not just the delivery.
+- **Spam complaints.** Gmail's ceiling is 0.3% and the practical target is
+  0.1%. One complaint in a thousand sends. Unsolicited invites are how you get
+  them.
+- **Bursts after silence.** See the table.
+- **Rotating the From address.** Reputation attaches to
+  `hello@send.adarshthoduvakkal.com`. Keep it.
+
+### Still worth fixing, in rough order of value
+
+1. **The From address cannot receive replies.** `send.adarshthoduvakkal.com`
+   has no MX record, so anything a student sends back bounces. A sender nobody
+   can reply to is both a small negative signal and a real dead end for someone
+   confused. Add an MX with forwarding, or set a `Reply-To` that works.
+2. **The link domain does not match the sending domain.** Mail comes from
+   `send.adarshthoduvakkal.com` and links to `honk-loo.vercel.app`. Filters
+   notice the mismatch. Pointing a subdomain of the same root at the app —
+   `honk.adarshthoduvakkal.com` — aligns them and is a stronger signal than
+   anything else on this list.
+3. **There is no feedback loop.** Honk cannot currently tell a delivered code
+   from a quarantined one; `delivered` is all the API reports. A Resend webhook
+   recording bounces, complaints and delays would make failure visible instead
+   of silent, which is the thing that made this take an evening to notice.
+4. **Google Postmaster Tools.** Free reputation dashboard, but only for Gmail —
+   marginal here, given who the recipients are.
+
+### Do not buy a dedicated IP
+
+It is the obvious-looking upgrade and it is wrong at this volume. A dedicated
+IP has no reputation of its own and needs *sustained* traffic to build one —
+the usual threshold is around 100,000 messages a month. Honk will send a few
+thousand a year. On a shared pool you inherit Amazon SES's aggregate
+reputation, which at this scale is far better than anything you could build
+alone.
+
+### How to know it is working
+
+Send one code to a Waterloo address that has never received one, and time it.
+
+- **Under a minute, in the inbox** → done. That is what instant looks like, and
+  no further work is needed.
+- **Arrives late** → still being throttled. Keep warming; re-test in a few days.
+- **Never arrives** → still quarantined. The allowlist is the only fast fix.
+
+`npm run smoke` cannot answer this. It checks that the endpoint replies, not
+that mail lands — which is precisely the gap that made the original problem
+invisible. Watch the Resend dashboard and a real inbox.
+
+---
+
 ## Already done — for reference
 
 ### What you need
