@@ -1,6 +1,7 @@
 # Deploying Honk
 
-Most of the setup is done. This is what is left, what is already standing, and
+Honk is deployed and configured. Everything that could be automated is done;
+what is left needs a person. This is that list, what is already standing, and
 how to check it.
 
 ---
@@ -15,90 +16,68 @@ how to check it.
 | Full suite | ✅ 165 tests, typecheck and build clean |
 | Vercel framework preset | ✅ pinned in `vercel.json` |
 | Hosting domain | ✅ `*.vercel.app` is fine, no purchase needed |
-| **Sending domain in Resend** | ❌ **the one hard blocker** |
+| Sending domain in Resend | ✅ `send.adarshthoduvakkal.com` verified, test send delivered |
 | `DATABASE_URL` in Vercel | ✅ set for Production and Preview |
-| `RESEND_API_KEY` in Vercel | ✅ set — but delivers only to your own address until the domain verifies |
+| `RESEND_API_KEY` in Vercel | ✅ set for Production and Preview |
+| `EMAIL_FROM` | ✅ `Honk <hello@send.adarshthoduvakkal.com>` |
 | `NEXT_PUBLIC_SITE_URL` | ✅ pinned to `honk-loo.vercel.app` |
 
 ---
 
 ## What is left
 
-**One thing: verify a sending domain in Resend.** Everything else is done — the
-code is pushed, `DATABASE_URL`, `RESEND_API_KEY` and `NEXT_PUBLIC_SITE_URL` are
-all set for Production and Preview, the app is live at `honk-loo.vercel.app`,
-and the smoke test passes 20/20.
+**Nothing that can be automated.** The deploy is complete: all five environment
+variables are set for Production and Preview, `send.adarshthoduvakkal.com` is
+verified in Resend, a test send from `hello@send.adarshthoduvakkal.com` came
+back `delivered`, and the smoke test passes 20/20 against
+`honk-loo.vercel.app`.
 
-The key being set means sign-in now works **for you**. `EMAIL_FROM` is unset,
-so Resend falls back to `onboarding@resend.dev`, which delivers only to the
-address that owns the Resend account. Everyone else gets a 200 and no email.
-Do not share the URL until the step below is done.
+What remains is four checks that need a human, and the first one is the reason
+the rest of this document exists.
 
-### Verify a sending domain in Resend
+### 1. A code arriving in a real inbox
 
-**This is the only thing standing between you and other people being able to
-sign in.** Until it is done, Resend delivers only to the address that owns the
-Resend account, and it fails silently — the API returns 200 either way.
+Sign in with an `@uwaterloo.ca` address **that is not yours**. Resend returns
+200 whether or not mail is deliverable, so this is the only thing that proves
+sign-in works for somebody who is not you. The verified domain and the
+`delivered` test send make this very likely to pass — they do not make it
+certain, because neither of them exercised Honk's own send path end to end.
 
-You already own two domains, both registered at Vercel and on Vercel
-nameservers — `adarshthoduvakkal.com` and `origintutoring.com`. Use a
-**subdomain**, not the apex, and prefer the personal domain: `origintutoring.com`
-is a business that sends real mail, and the point of a subdomain is that a bad
-send from Honk cannot touch it.
-
-1. Resend → Domains → Add `send.adarshthoduvakkal.com`
-2. Resend hands you a DKIM `TXT`, an SPF `TXT` and usually a `MX`. Because the
-   nameservers are Vercel's, they go in from here rather than a DNS dashboard:
+While you are there, set `SMOKE_EMAIL` to that address so the smoke test can
+check the accept side of the gate on future runs:
 
 ```bash
-vercel dns add adarshthoduvakkal.com resend._domainkey.send TXT "p=MIGf..."
-vercel dns add adarshthoduvakkal.com send TXT "v=spf1 include:amazonses.com ~all"
-vercel dns add adarshthoduvakkal.com send MX feedback-smtp.us-east-1.amazonses.com 10
-vercel dns ls adarshthoduvakkal.com          # confirm they are there
+SMOKE_EMAIL=someone@uwaterloo.ca npm run smoke -- https://honk-loo.vercel.app
 ```
 
-   Copy the values Resend actually shows you — the ones above are the shape,
-   not the content, and the SES region in the MX record varies.
+That takes the run from 20 checks to 21. Leave it unset and the check is
+skipped rather than sending to a made-up address, which would hard-bounce.
 
-3. Wait for the status to read **Verified** — usually minutes
-4. `RESEND_API_KEY` is already in Vercel. Add `EMAIL_FROM` alongside it, for Production **and** Preview:
+### 2. The paste survives sign-in
 
-```bash
-vercel env add EMAIL_FROM production         # Honk <hello@send.adarshthoduvakkal.com>
-vercel env add EMAIL_FROM preview
-```
+Paste before signing in; after verifying, the schedule should be on `/home`
+without pasting again.
 
-5. Redeploy, because environment variables are read at build time:
+### 3. Two accounts, same course
 
-```bash
-vercel redeploy $(vercel ls honk | grep Production | head -1 | grep -o 'https://[^ ]*')
-```
+Neither should see the other until both turn discoverability on, and shared
+gaps should appear only after a request is accepted. Then block one from the
+other and confirm they vanish from both rosters and the blocked side is told
+nothing. The integration tests cover this, but it is worth ten minutes by hand
+before real students are on it.
 
-6. Re-run the smoke test and then sign in with a Waterloo address **that is not
-   yours** — the one check no script can do.
+### 4. The link preview
 
-The subdomain also keeps you off the apex SPF record, which is the record that
-would break existing mail on a domain you already send or receive from.
+Paste `https://honk-loo.vercel.app` into iMessage or a Slack DM and look at the
+card.
 
-### Paste values without quotes
+### Then: the parser
 
-`.env.local` wraps values in double quotes and dotenv strips them; a hosting
-dashboard does not. A `DATABASE_URL` pasted with its quotes intact reached
-`postgres()` as `"postgresql://..."` and threw `TypeError: Invalid URL` on the
-first query — which surfaced as a bare 500 on sign-in with nothing on the page
-to say why. `normalizeDatabaseUrl` in `src/lib/db/url.ts` now strips a matched
-pair of surrounding quotes, so this particular mistake is survivable, but paste
-the bare value anyway.
-
-### Checking it
-
-```bash
-npm run smoke -- https://honk-loo.vercel.app
-```
-
-20 automated checks, exits non-zero if any fail — 21 with `SMOKE_EMAIL` set. Then the four manual ones
-under "What the script cannot check" — the first is signing in with a Waterloo
-address **that is not yours**, which is the only way to catch a Resend problem.
+The highest-risk unknown left in the project is not the deploy. It is that the
+parser has never seen a real Quest paste. Collect ~10 across different
+faculties on day one and turn every failure into a test case. `CHANGELOG.md`
+ranks the six failure modes expected; two fail silently rather than warning, so
+check those by hand first.
 
 ---
 
@@ -226,13 +205,17 @@ courses with subject `ZZ`.
 
 ### Email
 
-Resend will only deliver to **your own verified address** until you verify a
-sending domain. Skip this and the deploy will look completely fine to you and
-be impossible for anyone else to sign into. There is no error — the code sends,
+**Done for this project.** `send.adarshthoduvakkal.com` is verified in Resend
+and `EMAIL_FROM` is set to `Honk <hello@send.adarshthoduvakkal.com>`. Kept here
+because the reasoning is what matters if you ever move domains.
+
+Resend delivers only to **your own verified address** until a sending domain is
+verified. Skip that and the deploy looks completely fine to you and is
+impossible for anyone else to sign into. There is no error — the code sends,
 and nobody receives it.
 
-**You do not need to buy a domain for this.** A subdomain of one you already
-own works, and is the better choice anyway.
+**You do not need to buy a domain.** A subdomain of one you already own works,
+and is the better choice anyway.
 
 1. Add `send.yourdomain.com` in Resend → Domains.
 2. Add the DKIM and SPF records it gives you at whoever runs your DNS.
@@ -372,9 +355,11 @@ on it:
   the live Neon database, so the privacy rules are verified. The automated
   smoke test does not replace them: it checks what a signed-out
   stranger sees, not what two signed-in accounts see of each other.
-- **Email delivery has never been exercised.** The console path is confirmed
-  working (a code is issued and printed), but no mail has been sent through
-  Resend. This is the one remaining hard blocker — see "What is left" above.
+- **Honk's own send path has never reached a real inbox.** The domain is
+  verified and a direct test send from `hello@send.adarshthoduvakkal.com` came
+  back `delivered`, so the sender works. What is still unproven is the whole
+  chain — Honk issuing a code, formatting the mail and handing it to Resend —
+  landing in somebody else's inbox. That is check 1 under "What is left".
 - ~~The deploy has never been exercised end to end.~~ **Done** — the app is
   live at `honk-loo.vercel.app` with `DATABASE_URL` wired, and the smoke test
   passes 20/20 against it.
