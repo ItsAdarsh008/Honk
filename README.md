@@ -4,8 +4,9 @@ Paste your Quest schedule, see who you share classes and free time with.
 University of Waterloo only.
 
 Named after the campus geese. The name is the joke — the interface is calm.
-See `SPEC.md` for the product spec and `CHANGELOG.md` for what was built,
-what was left out, and where the parser is most likely to break.
+See `SPEC.md` for the product spec, `DEPLOY.md` for getting it online, and
+`CHANGELOG.md` for what was built, what was left out, and where the parser is
+most likely to break.
 
 ## Status
 
@@ -86,6 +87,12 @@ accepted-friends-only — enforced in `src/lib/overlap/queries.ts`, not in the
 UI. If you add a screen, do not re-query around those functions.
 `src/lib/privacy-boundary.test.ts` fails the build if you do, and it runs
 without a database so it cannot be skipped.
+
+## Deploying
+
+See `DEPLOY.md`. The short version: Neon for Postgres, Vercel for hosting,
+Resend for the sign-in codes — and verify a sending domain in Resend before
+telling anyone the URL, or nobody but you will be able to sign in.
 
 ## Next
 
