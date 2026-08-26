@@ -101,8 +101,24 @@ git remote add origin git@github.com:<you>/honk.git
 git push -u origin main
 ```
 
-In Vercel: **Add New → Project**, import the repo. Framework detection picks up
-Next.js; no build settings need changing.
+In Vercel: **Add New → Project**, import the repo.
+
+`vercel.json` pins `"framework": "nextjs"`, so the preset does not depend on
+detection working. Confirm under **Settings → Build & Deployment** that:
+
+- **Framework Preset** is *Next.js*, not *Other*
+- **Root Directory** is empty (the app is at the repo root)
+- **Output Directory** is on its default, i.e. the override toggle is **off**
+
+If the preset is *Other*, the build fails with:
+
+> No Output Directory named "public" found after the Build completed.
+
+That is Vercel not running `next build` at all and looking for a plain static
+site instead. **Do not create a `public/` folder to make it go away** — the
+build would then "succeed" and deploy an empty directory, which is a worse
+failure because it looks like it worked. Fix the preset instead. A `public/`
+folder is optional in Next.js and this project does not have one.
 
 Add the four environment variables under Settings → Environment Variables, for
 Production **and** Preview. Deploy.
