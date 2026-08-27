@@ -4,6 +4,7 @@ import "./globals.css";
 import { GooseMark } from "@/components/GooseMark";
 import { getOptionalUser } from "@/lib/auth/current";
 import { siteUrl } from "@/lib/site";
+import { Analytics } from "@vercel/analytics/next";
 
 const SITE_URL = siteUrl();
 
@@ -99,6 +100,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             .
           </p>
         </footer>
+        <Analytics />
       </body>
     </html>
   );

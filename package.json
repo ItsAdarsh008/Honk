@@ -17,6 +17,7 @@
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.3",
+    "@vercel/analytics": "^2.0.1",
     "drizzle-orm": "^0.44.5",
     "jose": "^6.2.10",
     "next": "15.5.9",
