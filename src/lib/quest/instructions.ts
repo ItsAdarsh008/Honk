@@ -29,19 +29,47 @@ export function questSteps(platform: Platform): string[] {
   return [...common, `Select the whole page and copy it — ${shortcut(platform)}.`, "Paste it above."];
 }
 
-/**
- * Read the platform from the browser.
- *
- * Pointer type over user-agent sniffing: a tablet with a keyboard and a laptop
- * with a touchscreen both exist, and what actually decides the instructions is
- * whether there is a keyboard to press ⌘A on. Only called in the browser.
- */
-export function detectPlatform(): Platform {
-  const coarse =
-    typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-  const touchPoints = navigator.maxTouchPoints ?? 0;
-  if (coarse && touchPoints > 0) return "touch";
+export interface PlatformSignals {
+  userAgent: string;
+  /** `(pointer: coarse)` — what the *primary* pointer is. */
+  primaryPointerCoarse: boolean;
+  /** `(any-pointer: fine)` — whether a mouse or trackpad exists at all. */
+  anyPointerFine: boolean;
+}
 
-  const ua = navigator.userAgent ?? "";
+/**
+ * Which instructions to show.
+ *
+ * The question is not "is this a small screen" but "is there a keyboard to
+ * press ⌘A on". Three signals, because no one of them is enough:
+ *
+ *  - A phone or tablet user-agent is decisive. Unfashionable, and still the
+ *    most reliable thing available for the case that matters most.
+ *  - Otherwise a coarse primary pointer *with no fine pointer anywhere* means
+ *    fingers only. The second half is what keeps a touchscreen laptop on the
+ *    desktop steps: it reports a coarse pointer and has a keyboard regardless.
+ *  - Failing both, desktop, split by user-agent only to name the modifier key.
+ */
+export function platformFrom(signals: PlatformSignals): Platform {
+  const ua = signals.userAgent;
+  const mobileUa = /iPhone|iPod|Android.*Mobile|Windows Phone/i.test(ua);
+  const tabletUa = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
+  // iPadOS 13+ reports a desktop Mac user-agent; touch with no mouse gives it away.
+  const desktopClaimingTouch =
+    /Macintosh/.test(ua) && signals.primaryPointerCoarse && !signals.anyPointerFine;
+
+  if (mobileUa || tabletUa || desktopClaimingTouch) return "touch";
+  if (signals.primaryPointerCoarse && !signals.anyPointerFine) return "touch";
   return /Mac|iPhone|iPad|iPod/.test(ua) ? "mac" : "windows";
+}
+
+/** Reads the signals from the browser. Only called after mount. */
+export function detectPlatform(): Platform {
+  const media = (query: string) =>
+    typeof window.matchMedia === "function" && window.matchMedia(query).matches;
+  return platformFrom({
+    userAgent: navigator.userAgent ?? "",
+    primaryPointerCoarse: media("(pointer: coarse)"),
+    anyPointerFine: media("(any-pointer: fine)"),
+  });
 }

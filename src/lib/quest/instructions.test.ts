@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { questSteps, type Platform } from "./instructions";
+import { platformFrom, questSteps, type Platform } from "./instructions";
 
 const PLATFORMS: Platform[] = ["touch", "mac", "windows"];
 
@@ -30,5 +30,63 @@ describe("questSteps", () => {
     for (const platform of PLATFORMS) {
       expect(questSteps(platform).at(-1)?.toLowerCase()).toContain("paste it above");
     }
+  });
+});
+
+const UA = {
+  iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148 Safari/604.1",
+  androidPhone: "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/126.0 Mobile Safari/537.36",
+  androidTablet: "Mozilla/5.0 (Linux; Android 14; SM-X200) Chrome/126.0 Safari/537.36",
+  ipadOs: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Version/17.0 Safari/605.1.15",
+  mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0 Safari/537.36",
+  windows: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36",
+};
+
+describe("platformFrom", () => {
+  it("reads a phone as touch", () => {
+    for (const ua of [UA.iphone, UA.androidPhone]) {
+      expect(
+        platformFrom({ userAgent: ua, primaryPointerCoarse: true, anyPointerFine: false }),
+      ).toBe("touch");
+    }
+  });
+
+  it("reads a tablet as touch", () => {
+    expect(
+      platformFrom({ userAgent: UA.androidTablet, primaryPointerCoarse: true, anyPointerFine: false }),
+    ).toBe("touch");
+  });
+
+  it("keeps a touchscreen laptop on the desktop steps", () => {
+    // The bug this heuristic exists for: a coarse pointer is present, but so is
+    // a trackpad, and the keyboard shortcut is the faster instruction.
+    expect(
+      platformFrom({ userAgent: UA.windows, primaryPointerCoarse: true, anyPointerFine: true }),
+    ).toBe("windows");
+  });
+
+  it("catches an iPad pretending to be a Mac", () => {
+    // iPadOS 13+ sends a desktop Macintosh user-agent; no mouse gives it away.
+    expect(
+      platformFrom({ userAgent: UA.ipadOs, primaryPointerCoarse: true, anyPointerFine: false }),
+    ).toBe("touch");
+    // A real Mac with a trackpad must not be caught by that rule.
+    expect(
+      platformFrom({ userAgent: UA.mac, primaryPointerCoarse: false, anyPointerFine: true }),
+    ).toBe("mac");
+  });
+
+  it("names the modifier from the desktop it is on", () => {
+    const desktop = { primaryPointerCoarse: false, anyPointerFine: true };
+    expect(platformFrom({ userAgent: UA.mac, ...desktop })).toBe("mac");
+    expect(platformFrom({ userAgent: UA.windows, ...desktop })).toBe("windows");
+  });
+
+  it("falls back to desktop when the browser reports nothing useful", () => {
+    // Media queries can be unavailable; the desktop steps are the safer default
+    // because they are also what a crawler and a no-JS reader see.
+    expect(
+      platformFrom({ userAgent: "", primaryPointerCoarse: false, anyPointerFine: false }),
+    ).toBe("windows");
   });
 });
