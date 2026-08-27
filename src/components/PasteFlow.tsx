@@ -9,11 +9,12 @@
  * pasting and the payoff.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseQuestSchedule, type ParseResult } from "@/lib/quest/parse";
 import { savePending, clearPending } from "@/lib/pending";
 import { termName } from "@/lib/time";
+import { isHandheld } from "@/lib/device";
 import { assignCourseColors } from "@/lib/colors";
 import { ScheduleGrid, type GridMeeting } from "./ScheduleGrid";
 import { CourseList } from "./CourseList";
@@ -31,6 +32,11 @@ export function PasteFlow({ signedIn }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  const [handheld, setHandheld] = useState(false);
+
+  useEffect(() => {
+    setHandheld(isHandheld(navigator.userAgent ?? "", navigator.maxTouchPoints ?? 0));
+  }, []);
 
   const handleChange = useCallback((value: string) => {
     setRaw(value);
@@ -137,7 +143,20 @@ export function PasteFlow({ signedIn }: Props) {
             </li>
           ))}
         </ol>
+        {/*
+          Rendered after mount, never during: the server cannot know what this
+          is, and defaulting to false means a laptop never flashes a line
+          telling it to go find a laptop.
+        */}
+        {handheld && (
+          <p className="mt-4 rounded-[10px] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2.5 text-[13px] leading-relaxed text-[var(--ink-soft)]">
+            <strong className="font-semibold text-[var(--ink)]">This part needs a laptop.</strong>{" "}
+            Quest&rsquo;s mobile site has no class schedule page, so there is nothing to copy
+            from a phone. Once your schedule is in, Honk works fine here.
+          </p>
+        )}
       </div>
+
     </div>
   );
 }
