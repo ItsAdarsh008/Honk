@@ -184,9 +184,16 @@ function ReviewStep({
     <div className="rise space-y-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <h2 className="text-[22px] font-semibold tracking-[-0.01em]">Here's your week.</h2>
+          <h2 className="text-[22px] font-semibold tracking-[-0.01em]">That&rsquo;s your week.</h2>
+          {/*
+            Deliberately not "check it looks right". Quest and every timetable
+            tool already draw a grid; if this screen reads as another one, Honk
+            gets filed next to them. The grid is here to prove the paste worked
+            — the sentence is here to say what it is actually for.
+          */}
           <p className="mt-1 text-[15px] text-[var(--ink-soft)]">
-            Check it looks right before you save it.
+            Now the part a timetable can&rsquo;t do: who else is in these classes, and when
+            you and your friends are both free.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -212,7 +219,7 @@ function ReviewStep({
 
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn btn-primary" onClick={onSave} disabled={saving}>
-          {saving ? "Saving…" : signedIn ? "Save this schedule" : "Save it and find your classes"}
+          {saving ? "Saving…" : signedIn ? "Save and find my classes" : "Save it and find your classes"}
         </button>
         <button className="btn btn-quiet" onClick={onReset} disabled={saving}>
           Paste a different one

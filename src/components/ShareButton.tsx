@@ -25,7 +25,8 @@ export function ShareButton({
     const url = handle
       ? `${window.location.origin}/i/${handle}`
       : `${window.location.origin}/`;
-    const text = "Paste your Quest schedule into Honk and see which classes we share.";
+    const text =
+      "Paste your Quest schedule into Honk — it shows which classes we share and when we are both free.";
 
     if (navigator.share) {
       try {

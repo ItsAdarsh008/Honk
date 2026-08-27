@@ -53,11 +53,13 @@ export default async function LandingPage() {
       <section className="space-y-3">
         <p className="section-label">What you get</p>
         <dl className="grid gap-4 sm:grid-cols-3">
+          {/*
+            Overlap first, timetable last. Laying out a week is what Quest and
+            every scheduling tool already do — leading with it invites the
+            comparison, and the comparison is the one Honk loses. The two things
+            above it are the ones nothing else on campus does.
+          */}
           {[
-            {
-              term: "Your week, laid out",
-              detail: "Every class in place, with the gaps between them measured.",
-            },
             {
               term: "Who's in your classes",
               detail: "How many people are in each section, and the names of those who opted in.",
@@ -66,7 +68,12 @@ export default async function LandingPage() {
               term: "When you're both free",
               detail: "Overlapping gaps with the friends you've added. Nobody else.",
             },
+            {
+              term: "Your week, laid out",
+              detail: "Every class in place, with the gaps between them measured.",
+            },
           ].map((item) => (
+
             <div key={item.term} className="space-y-1">
               <dt className="text-[15px] font-semibold">{item.term}</dt>
               <dd className="text-[14px] leading-relaxed text-[var(--ink-soft)]">

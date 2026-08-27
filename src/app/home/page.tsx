@@ -45,7 +45,8 @@ export default async function HomePage() {
             Let's get your schedule in.
           </h1>
           <p className="text-[15px] text-[var(--ink-soft)]">
-            Paste it from Quest and Honk will lay out your week.
+            Paste it from Quest, then Honk shows who else is in your classes and when
+            you are free at the same time.
           </p>
         </div>
         <div className="card p-5 sm:p-6">
@@ -63,6 +64,15 @@ export default async function HomePage() {
     listIncomingRequests(user.id),
     getFreeNow(user.id, termCode, now),
   ]);
+
+  // Aggregate only, which SPEC section 6 allows to everyone: a count names
+  // nobody. Summing across sections would double-count a person in two of
+  // them, so this counts sections rather than people.
+  const sectionsWithOthers = classes.filter((c) => c.otherCount > 0).length;
+  const biggestShared = classes.reduce<(typeof classes)[number] | null>(
+    (best, c) => (c.otherCount > (best?.otherCount ?? 0) ? c : best),
+    null,
+  );
 
   const courseColors = assignCourseColors(
     schedule.map((c) => `${c.subject} ${c.catalog}`),
@@ -92,6 +102,49 @@ export default async function HomePage() {
         </h1>
         <span className="chip">{termName(termCode)}</span>
       </div>
+
+      {/*
+        The first thing somebody sees after pasting, and only while they have
+        nobody. A schedule on its own is a timetable, which is not what Honk is
+        — so the moment the paste lands, the screen says what the schedule is
+        for and hands over the link. It disappears the instant there is one
+        friend or one request, because past that point it would be nagging.
+      */}
+      {friends.length === 0 && requests.length === 0 && (
+        <section className="card space-y-3 p-5 sm:p-6">
+          <h2 className="text-[18px] font-semibold tracking-[-0.01em]">
+            Honk needs one other person to be worth anything.
+          </h2>
+          <p className="text-[15px] leading-relaxed text-[var(--ink-soft)]">
+            {sectionsWithOthers > 0 ? (
+              <>
+                You already share {sectionsWithOthers}{" "}
+                {sectionsWithOthers === 1 ? "section" : "sections"} with people here
+                {biggestShared ? (
+                  <>
+                    {" "}
+                    — {biggestShared.otherCount} of them in{" "}
+                    <span className="mono text-[14px]">
+                      {biggestShared.subject} {biggestShared.catalog}
+                    </span>
+                  </>
+                ) : null}
+                . Shared classes show up on their own. Shared free time only appears once
+                you have added each other.
+              </>
+            ) : (
+              <>
+                Nobody from your classes has joined yet, so there is nothing to see above.
+                That is not broken — it is what being early looks like. Send your link to
+                the people you already sit next to.
+              </>
+            )}
+          </p>
+          <div className="pt-1">
+            <ShareButton handle={user.handle} label="Send my link" />
+          </div>
+        </section>
+      )}
 
       {/* Free right now leads only when there is something in it. A brand-new
           account with no friends should not open onto an empty block. */}
