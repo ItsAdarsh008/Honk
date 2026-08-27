@@ -362,21 +362,37 @@ export async function findOrCreateEntraUser(
 }
 
 /**
- * The account behind a claimed address, created unverified.
+ * The account behind a passkey.
  *
- * A passkey proves possession of a device, not ownership of a mailbox, so
- * `verifiedAt` stays null and the account is invisible to everyone until a
- * code or a Waterloo token says otherwise. An existing verified account is
- * returned untouched — registering a passkey against an address somebody else
- * already verified must never hand it over.
+ * `verifiedAt` is set here, and it is worth being explicit about what that
+ * does and does not mean now that no code is ever sent.
+ *
+ * It no longer means "this address was proved". Nothing proves that any more.
+ * It means "this account finished signing up", and it exists because every
+ * social read gates on it — `overlap/queries.ts`, `invite.ts`, `stats.ts` — so
+ * leaving it null would make every user invisible to every other user and the
+ * classmates feature would simply not work.
+ *
+ * The cost, stated plainly: anyone can type any `@uwaterloo.ca` address and
+ * get an account under it, including one that is not theirs. What actually
+ * protects people is unchanged and is where SPEC section 6 always put it —
+ * `discoverable` defaults false, identities are never shown to non-friends,
+ * and gaps and room numbers need an accepted request. An impostor still has to
+ * paste a real-looking schedule and be accepted by somebody before they learn
+ * anything, and a genuine student acting in bad faith could always do that.
+ *
+ * What is genuinely lost is the Waterloo-only guarantee: without a code or a
+ * directory token, nothing stops somebody outside the university joining. That
+ * is a fine trade for a closed beta and a poor one for an open launch, so it
+ * is worth revisiting before the frosh-week push.
  */
-export async function findOrCreateUnverifiedUser(
-  email: string,
-  db: Db = getDb(),
-): Promise<User> {
+export async function findOrCreatePasskeyUser(email: string, db: Db = getDb()): Promise<User> {
   const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (existing) return existing;
-  const [created] = await db.insert(users).values({ email }).returning();
+  const [created] = await db
+    .insert(users)
+    .values({ email, verifiedAt: new Date() })
+    .returning();
   return created;
 }
 

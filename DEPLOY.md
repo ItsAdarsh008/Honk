@@ -1,9 +1,8 @@
 # Deploying Honk
 
-Honk is deployed and configured. One thing is still broken, and it is not in
-the code: sign-in emails are accepted by the receiving server and then
-filtered before anyone sees them. This is that problem, what is already
-standing, and how to check it.
+Honk is deployed and ready for beta testers. Sign-in is passkeys, so nothing
+depends on an email arriving. This is what to ask testers for, what is switched
+off and why, and everything already standing.
 
 ---
 
@@ -11,188 +10,82 @@ standing, and how to check it.
 
 | | State |
 |---|---|
-| Neon Postgres project `honk` | ✅ provisioned, all nine tables pushed |
+| Deployed to Vercel | ✅ live at `honk-loo.vercel.app`, smoke test 20/20 |
+| **Sign-in** | ✅ **passkeys — no email, no password, nothing to wait for** |
+| Address verification | ⚠️ off. Nothing proves an address belongs to whoever typed it |
+| Email codes | ⏸️ built and tested, switched off behind `emailCodesEnabled` |
+| Sign in with Waterloo (Entra) | ⏸️ built, dormant, needs an app registration |
+| Neon Postgres project `honk` | ✅ provisioned, all ten tables pushed |
 | Privacy integration tests | ✅ 12/12 passing against the live database |
-| Deployed to Vercel | ✅ live at `honk.adarshthoduvakkal.com`, smoke test 20/20 |
-| Full suite | ✅ 181 tests, typecheck and build clean |
-| Vercel framework preset | ✅ pinned in `vercel.json` |
-| Hosting domain | ✅ `honk.adarshthoduvakkal.com`, with `honk-loo.vercel.app` still working |
-| Sending domain in Resend | ✅ `send.adarshthoduvakkal.com` verified, DMARC at p=quarantine |
-| Mail reaching an inbox | ⚠️ accepted then filtered; one of five arrived, in the inbox |
-| **Sign in with Waterloo (Entra)** | ❌ **code built and deployed — needs the app registration** |
+| Full suite | ✅ 184 tests, typecheck and build clean |
+| Quest parser | ⚠️ has seen exactly one real paste |
 | `DATABASE_URL` in Vercel | ✅ set for Production and Preview |
-| `RESEND_API_KEY` in Vercel | ✅ set for Production and Preview |
-| `EMAIL_FROM` | ✅ `Honk <hello@send.adarshthoduvakkal.com>` |
-| `NEXT_PUBLIC_SITE_URL` | ✅ pinned to `honk.adarshthoduvakkal.com` |
-| Sending domain matches site domain | ✅ both under `adarshthoduvakkal.com`, null MX on the sender |
+| `NEXT_PUBLIC_SITE_URL` | ✅ `honk-loo.vercel.app` — no personal domain in the URL |
 
 ---
 
 ## What is left
 
-**Sign-in emails are being delivered and then filtered.** Everything else is
-done and deployed. This is the one thing between Honk and other people using
-it, and it is not a bug you can fix by changing code.
+**Nothing blocking. Honk is ready for beta testers.**
 
-### What is actually happening
+Sign-in is passkeys — Face ID, a fingerprint, or a screen lock. No code, no
+password, nothing that has to survive a mail gateway. That was the last thing
+standing between Honk and other people using it, and it is gone: the account is
+created by the device credential, so a filtered email cannot stop anybody
+signing up.
 
-Three sends, three accepted, none seen:
+### Send it to testers
 
-| | |
-|---|---|
-| `athoduva@uwaterloo.ca` | `250 OK`, never reached the mailbox — not Inbox, not Junk, not in search |
-| `athoduva@uwaterloo.ca` | same, six minutes later |
-| a Gmail address | `250 OK`, filtered |
+`https://honk-loo.vercel.app` — the custom domain was removed deliberately, so
+nothing about the URL carries a personal name.
 
-Authentication is not the problem and never was:
+Ask each of them for three things, in this order of usefulness:
 
-```
-DKIM    verified   resend._domainkey.send.adarshthoduvakkal.com
-SPF     verified   send.send.adarshthoduvakkal.com
-MX      verified   send.send.adarshthoduvakkal.com
-DMARC   published  _dmarc.send.adarshthoduvakkal.com  (p=quarantine)
-```
+1. **Their Quest paste, if it fails.** The parser has now seen exactly one real
+   paste, from one program. `CHANGELOG.md` lists what is still unexercised —
+   a dropped course above all, which fails silently by construction. Save any
+   paste that misbehaves into `quest-samples/` and run
+   `npx vite-node scripts/diagnose-paste.ts quest-samples/<file>`.
+2. **Whether the passkey worked first time**, and on what — iOS, Android,
+   Windows Hello, a browser password manager. This is the one flow nobody
+   outside this machine has exercised.
+3. **Two of them in the same course**, checking that neither sees the other
+   until both turn discoverability on, and that gaps only appear after a
+   request is accepted.
 
-Gmail's own 2026 sender rules are fully met, and transactional mail is exempt
-from the one-click-unsubscribe requirement. What is missing is **reputation**.
-The domain first sent mail on 26 August 2026 and has sent five messages ever.
-A six-digit code from a domain with no history is shaped exactly like the
-phishing that filters are tuned hardest against, and Gmail and Waterloo both
-made the same call.
+### What is switched off, and why it can come back
 
-Waterloo is worth knowing about specifically: `uwaterloo.ca` MX points at
-`mx1.hc503-62.ca.iphmx.com`, which is **Cisco Secure Email**, with Microsoft
-365 behind it. So the quarantine holding those codes is Cisco's, not
-Microsoft's — `security.microsoft.com/quarantine` will show nothing.
+Email codes still exist end to end — routes, templates, rate limits, the daily
+cap, tests. They are off, behind `emailCodesEnabled` on the sign-in screen.
+Nothing was deleted, because a passkey is bound to a device and losing that
+device currently means losing the account. If recovery matters more than the
+deliverability headache, that prop is the whole switch.
 
-### What was changed in response
+`RESEND_API_KEY` and `EMAIL_FROM` are still set in Vercel and no mail is being
+sent. Note that if codes ever go back on, the From address carries a personal
+domain name — worth changing first, given the domain was removed from the URL
+for exactly that reason.
 
-- **The email stopped looking like phishing.** The subject led with a bare
-  number (`481902 is your Honk code`); it now leads with a word. The body says
-  what Honk is, why the message arrived, and links to the real site, and the
-  text and HTML halves say the same things. A unique `X-Entity-Ref-ID` per send
-  stops Gmail threading a new code underneath an old one.
-- **DMARC went to `p=quarantine`** with strict alignment. Only Resend sends
-  from this subdomain and it aligns on both SPF and DKIM, so nothing legitimate
-  is at risk, and Gmail expects progression past `p=none`.
-- **A late code still works.** This was the one that mattered. Codes expired
-  after 10 minutes, and the one code that did get through took somewhere
-  between two minutes and two hours to appear — so every deliverability fix
-  above could have worked perfectly while sign-in still failed, because the
-  code was dead on arrival. The lifetime is now an hour. It costs almost
-  nothing: requesting a code invalidates the previous one, so exactly one is
-  ever live, and `MAX_CODE_ATTEMPTS` caps guesses at five against it. The
-  brute-force surface is set by that cap, not by the clock.
-- **The pasted schedule survives closing the tab.** It moved from
-  `sessionStorage` to `localStorage`. Somebody waiting half an hour for a code
-  will close the tab, and making them paste again afterwards is the most
-  expensive possible moment to lose them. It still clears the instant the
-  schedule saves.
-- **The sign-in screen now has a "Didn't get it?" panel** telling students to
-  check spam and mark the message *not spam*. That last part matters more than
-  it sounds: recipient engagement is the strongest reputation signal there is,
-  so every student who does it improves delivery for the next one.
+Waterloo sign-in (Entra) is also built and dormant, waiting on an app
+registration. It stays the best answer if Honk ever needs to prove somebody is
+really a Waterloo student, which passkeys do not.
 
-None of that outweighs reputation. It stops the content counting against a
-domain that has no credit to spend, which is all code can do here.
+### The thing to revisit before frosh week
 
-### What you need to do
+Passkey-only means **nothing verifies the address**. Anyone can type any
+`@uwaterloo.ca` address and get an account under it, including one that is not
+theirs, and nothing stops somebody outside the university joining at all.
 
-**1. Warm the domain up. This is the fix — everything else is a detail.**
+For a closed beta with people you know, that is a fine trade and the reason it
+was made. For an open frosh-week launch it is a poor one. What still protects
+people is unchanged and is where SPEC section 6 always put it: `discoverable`
+defaults false, identities are never shown to non-friends, and gaps and room
+numbers need an accepted request. An impostor has to paste a convincing
+schedule and be accepted by somebody before learning anything — but that is a
+social barrier, not a technical one.
 
-Reputation is earned by consistent low volume with real engagement. Send ten
-to twenty codes over the next several days to people who will actually open
-them, and ask each of them to drag it out of spam and mark it *not spam*. Do
-not go from five messages to a frosh-week spike; that pattern is itself the
-spam signature.
-
-**2. Find the Waterloo quarantine and release what is in it.**
-
-Cisco Secure Email sends periodic quarantine digest emails with a release link.
-Search Waterloo mail for "quarantine" or "spam digest". Releasing a message is
-also a positive signal.
-
-**3. Open a ticket with IST — `helpdesk@uwaterloo.ca`.**
-
-The evidence is unusually strong, so lead with it:
-
-```
-Sending domain: send.adarshthoduvakkal.com   (SPF, DKIM, DMARC all pass)
-Provider:       Resend / Amazon SES us-east-1
-Recipient:      athoduva@uwaterloo.ca
-2026-08-26 06:04:23 UTC   id 058c0daa-6dc8-416c-bc85-f256c302263c
-2026-08-26 06:10:22 UTC   id 5f3d0a42-20c6-4594-8075-062b2986b07d
-Both accepted with 250 by mx*.hc503-62.ca.iphmx.com; neither reached the mailbox.
-Request: allowlist the domain for a student project, or advise what is required.
-```
-
-**4. Re-test in a few days, not in an hour.** Reputation moves on the scale of
-days. `npm run smoke` will not tell you — it checks that the endpoint answers,
-not that mail arrives. Watch the Resend dashboard and a real inbox.
-
-### Sign in with a Waterloo account — the code is built, the app registration is not
-
-This is the way out of the deliverability problem rather than a mitigation for
-it: no email in the sign-in path at all. Everything is written, tested and
-deployed, and it stays invisible until `ENTRA_CLIENT_ID` and
-`ENTRA_CLIENT_SECRET` exist — so it cannot break code sign-in in the meantime.
-
-What is left is the app registration, which needs a browser and your Microsoft
-account.
-
-1. **portal.azure.com → Microsoft Entra ID → App registrations → New.**
-   - Name: `Honk`
-   - Supported account types: **Accounts in any organizational directory
-     (multitenant)**. Honk is registered in your own tenant but signs in
-     Waterloo accounts, which is what multitenant means here.
-   - Redirect URI: **Web** → `https://honk.adarshthoduvakkal.com/api/auth/entra/callback`
-2. **Certificates & secrets → New client secret.** Copy the *value*, not the id.
-   It is shown once.
-3. **API permissions.** The defaults are right: `openid`, `profile`, `email`,
-   nothing else. Do not add Graph permissions — every extra one raises the bar
-   for consent, and consent is the thing most likely to block this.
-4. Add both to Vercel and redeploy:
-
-```bash
-vercel env add ENTRA_CLIENT_ID production --no-sensitive
-vercel env add ENTRA_CLIENT_SECRET production
-vercel env add ENTRA_CLIENT_ID preview --no-sensitive
-vercel env add ENTRA_CLIENT_SECRET preview
-```
-
-5. Open `/signin` and use the **Sign in with Waterloo** button with your own
-   `@uwaterloo.ca` account.
-
-**The one thing that decides whether this works.** Step 5 either shows a
-consent screen or says *"Need admin approval"*. Universities commonly restrict
-consent for third-party apps to verified publishers, or disable it outright. If
-you are blocked, no amount of retrying changes it — it needs IST to grant admin
-consent for the app, and Honk shows the student a plain message saying to use a
-code instead.
-
-That is still a better ask than the email one. An allowlist asks IST to trust a
-sending reputation you have to keep earning; admin consent is granted once and
-removes the failure mode permanently.
-
-**Local development.** Add a second redirect URI
-`http://localhost:3000/api/auth/entra/callback` on the same registration and
-put the two variables in `.env.local`.
-
-### The decision to make before frosh week
-
-Both sign-in paths are live. Which one is primary depends on what happens next,
-and the honest position is that neither is proven with real students yet.
-
-- **Waterloo sign-in works** → make it primary. One click, no waiting, nothing
-  to filter, and it proves an active Waterloo account rather than access to a
-  mailbox. Keep codes as the fallback for anyone it fails for.
-- **Consent is blocked and IST is slow** → codes stay primary, and domain
-  warm-up is the whole game. Send a few a day to real people, get every one of
-  them marked *not spam*, and re-check in a week.
-
-What should not happen is arriving at frosh week without having tested either
-one on somebody who is not you. The parser has the same problem: it has now
-seen exactly one real Quest paste.
+Turning email codes back on, or finishing the Entra registration, restores the
+guarantee. Decide which before the launch, not during it.
 
 ---
 
@@ -308,7 +201,7 @@ already exists and this is what it is for.
 ### The sending domain and the site now match
 
 Mail comes from `hello@send.adarshthoduvakkal.com` and the links in it point at
-`honk.adarshthoduvakkal.com`. Same root domain, which is one fewer thing for a
+`honk-loo.vercel.app`. Same root domain, which is one fewer thing for a
 filter to hold against a sender it does not know — a message whose links go
 somewhere unrelated to where it came from is a phishing shape.
 
@@ -316,7 +209,7 @@ somewhere unrelated to where it came from is a phishing shape.
 pinned to the custom domain, so that is what OG tags and invite links embed.
 
 **Two things that must follow this.** The Entra redirect URI has to be
-registered as `https://honk.adarshthoduvakkal.com/api/auth/entra/callback`,
+registered as `https://honk-loo.vercel.app/api/auth/entra/callback`,
 exactly — if the app was already registered against the old hostname, add the
 new one. And any invite link generated before the switch embeds the old origin;
 harmless while nobody has one, worth knowing once people do.
@@ -544,7 +437,7 @@ effect until the next one.
 ### Pin the domain before sharing anything
 
 Vercel has already moved this project's canonical hostname once, from
-`honk-one.vercel.app` to `honk.adarshthoduvakkal.com`, with the old one left
+`honk-one.vercel.app` to `honk-loo.vercel.app`, with the old one left
 307-redirecting to the new. `siteUrl()` follows `VERCEL_PROJECT_PRODUCTION_URL`
 so it keeps up on its own, but two things do not: invite links already sent
 embed the origin they were generated on, and some link-preview scrapers do not
@@ -569,7 +462,7 @@ on.
 Most of this is automated. Point the script at the deployment:
 
 ```bash
-npm run smoke -- https://honk.adarshthoduvakkal.com
+npm run smoke -- https://honk-loo.vercel.app
 ```
 
 It runs 20 checks and exits non-zero if any fail, so it can gate a deploy in
@@ -649,7 +542,7 @@ on it:
   chain — Honk issuing a code, formatting the mail and handing it to Resend —
   landing in somebody else's inbox. That is check 1 under "What is left".
 - ~~The deploy has never been exercised end to end.~~ **Done** — the app is
-  live at `honk.adarshthoduvakkal.com` with `DATABASE_URL` wired, and the smoke test
+  live at `honk-loo.vercel.app` with `DATABASE_URL` wired, and the smoke test
   passes 20/20 against it.
 - **No load testing.** Free-tier Neon and a frosh-week spike have not met.
 

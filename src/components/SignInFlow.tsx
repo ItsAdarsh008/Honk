@@ -34,10 +34,12 @@ export function SignInFlow({
   entraEnabled = false,
   entraStatus = null,
   initialStep = null,
+  emailCodesEnabled = false,
 }: {
   entraEnabled?: boolean;
   entraStatus?: string | null;
   initialStep?: string | null;
+  emailCodesEnabled?: boolean;
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>(initialStep === "profile" ? "profile" : "email");
@@ -145,20 +147,11 @@ export function SignInFlow({
     if (outcome === "capacity") setStep("capacity");
   }, [email, requestCode]);
 
-  const submitEmail = useCallback(
-    async (event: React.FormEvent) => {
-      event.preventDefault();
-      await sendCode();
-    },
-    [sendCode],
-  );
-
   /**
    * Make a passkey for this address.
    *
    * Creates the account if there is not one, so getting into Honk never waits
-   * on a mail gateway. The account starts unverified and invisible until a code
-   * or a Waterloo token says the address is really theirs.
+   * on a mail gateway — which is the entire reason this is the default path.
    */
   const passkeyRegister = useCallback(async () => {
     setBusy(true);
@@ -254,6 +247,23 @@ export function SignInFlow({
       setBusy(false);
     }
   }, [finish]);
+
+  /**
+   * Passkey by default. The email-code path is kept whole and switched off
+   * rather than deleted: it is the only way back in if a device is lost, and
+   * turning it on again is one prop rather than a rewrite.
+   */
+  const submitEmail = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      if (emailCodesEnabled) {
+        await sendCode();
+        return;
+      }
+      await passkeyRegister();
+    },
+    [emailCodesEnabled, sendCode, passkeyRegister],
+  );
 
   const submitCode = useCallback(
     async (value: string) => {
@@ -381,23 +391,17 @@ export function SignInFlow({
 
           <div className="space-y-2.5">
             <button
-              type="button"
+              type="submit"
               className="btn btn-primary w-full"
-              onClick={() => void passkeyRegister()}
               disabled={busy || !email.trim()}
             >
-              {busy ? "Working…" : "Continue with a passkey"}
+              {busy ? "Working…" : "Create a passkey"}
             </button>
             <p className="text-[13px] leading-relaxed text-[var(--ink-faint)]">
-              Uses Face ID, a fingerprint or your screen lock. Nothing to wait for and
-              nothing to remember — you can add your class list straight away and confirm
-              the address later.
+              Face ID, a fingerprint, or your screen lock. Nothing to remember, nothing to
+              wait for in an inbox.
             </p>
           </div>
-
-          <button type="submit" className="btn btn-quiet w-full" disabled={busy || !email.trim()}>
-            {busy ? "Sending…" : "Email me a code instead"}
-          </button>
 
           <button
             type="button"
@@ -407,6 +411,7 @@ export function SignInFlow({
           >
             Already have a passkey? Sign in
           </button>
+
 
         </form>
       )}
