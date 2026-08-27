@@ -12,7 +12,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseQuestSchedule, type ParseResult } from "@/lib/quest/parse";
-import { detectPlatform, questSteps, type Platform } from "@/lib/quest/instructions";
+import {
+  detectPlatform,
+  questSteps,
+  stepsNote,
+  type Platform,
+} from "@/lib/quest/instructions";
 import { savePending, clearPending } from "@/lib/pending";
 import { termName } from "@/lib/time";
 import { assignCourseColors } from "@/lib/colors";
@@ -148,15 +153,22 @@ function QuestSteps() {
     setPlatform(detectPlatform());
   }, []);
 
+  const note = stepsNote(platform);
+
   return (
-    <ol className="mt-3 space-y-2.5">
-      {questSteps(platform).map((step, i) => (
-        <li key={step} className="flex gap-3 text-[15px] text-[var(--ink-soft)]">
-          <span className="mono mt-0.5 text-[11px] text-[var(--ink-faint)]">{i + 1}</span>
-          <span>{step}</span>
-        </li>
-      ))}
-    </ol>
+    <>
+      <ol className="mt-3 space-y-2.5">
+        {questSteps(platform).map((step, i) => (
+          <li key={step} className="flex gap-3 text-[15px] text-[var(--ink-soft)]">
+            <span className="mono mt-0.5 text-[11px] text-[var(--ink-faint)]">{i + 1}</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+      {note && (
+        <p className="mt-3 text-[13px] leading-relaxed text-[var(--ink-faint)]">{note}</p>
+      )}
+    </>
   );
 }
 

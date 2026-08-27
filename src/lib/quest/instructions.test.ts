@@ -1,37 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { platformFrom, questSteps, type Platform } from "./instructions";
+import { isTouch, platformFrom, questSteps, stepsNote, type Platform } from "./instructions";
 
-const PLATFORMS: Platform[] = ["touch", "mac", "windows"];
-
-describe("questSteps", () => {
-  it("always starts in the same place, whatever the device", () => {
-    for (const platform of PLATFORMS) {
-      const steps = questSteps(platform);
-      expect(steps[0]).toContain("My Class Schedule");
-      expect(steps[1]).toContain("List View");
-    }
-  });
-
-  it("never tells a phone to press a keyboard shortcut", () => {
-    // The whole point: there is no ⌘A without a keyboard.
-    const steps = questSteps("touch").join(" ");
-    expect(steps).not.toContain("⌘");
-    expect(steps).not.toContain("Ctrl");
-    expect(steps).toContain("Press and hold");
-  });
-
-  it("names the right modifier on each desktop", () => {
-    expect(questSteps("mac").join(" ")).toContain("⌘A then ⌘C");
-    expect(questSteps("windows").join(" ")).toContain("Ctrl+A then Ctrl+C");
-    expect(questSteps("mac").join(" ")).not.toContain("Ctrl");
-  });
-
-  it("ends by telling you to paste, on every platform", () => {
-    for (const platform of PLATFORMS) {
-      expect(questSteps(platform).at(-1)?.toLowerCase()).toContain("paste it above");
-    }
-  });
-});
+const PLATFORMS: Platform[] = ["ios", "android", "mac", "windows"];
 
 const UA = {
   iphone: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148 Safari/604.1",
@@ -40,78 +10,98 @@ const UA = {
   ipadOs: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Version/17.0 Safari/605.1.15",
   mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0 Safari/537.36",
   windows: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0 Safari/537.36",
+  linux: "Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0 Safari/537.36",
+  cros: "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) Chrome/126.0 Safari/537.36",
 };
 
-describe("platformFrom", () => {
-  it("reads a phone as touch", () => {
-    for (const ua of [UA.iphone, UA.androidPhone]) {
-      expect(
-        platformFrom({ userAgent: ua, primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 5 }),
-      ).toBe("touch");
+describe("questSteps", () => {
+  it("ends by telling you to paste, everywhere", () => {
+    for (const platform of PLATFORMS) {
+      expect(questSteps(platform).at(-1)?.toLowerCase()).toContain("paste it above");
     }
   });
 
-  it("reads a tablet as touch", () => {
-    expect(
-      platformFrom({ userAgent: UA.androidTablet, primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 5 }),
-    ).toBe("touch");
+  it("gets a phone onto the desktop site first", () => {
+    // Quest's mobile site has no class schedule at all: its Enroll menu offers
+    // Add, Drop, Swap, Edit, Enrollment Dates, Class Search and Exam
+    // Information. Without this step the next one points at nothing.
+    for (const platform of ["ios", "android"] as const) {
+      const steps = questSteps(platform);
+      const desktopStep = steps.findIndex((s) => /desktop site/i.test(s));
+      const scheduleStep = steps.findIndex((s) => /My Class Schedule/.test(s));
+      expect(desktopStep).toBeGreaterThan(-1);
+      expect(desktopStep).toBeLessThan(scheduleStep);
+    }
   });
 
-  it("keeps a touchscreen laptop on the desktop steps", () => {
-    // The bug this heuristic exists for: a coarse pointer is present, but so is
-    // a trackpad, and the keyboard shortcut is the faster instruction.
-    expect(
-      platformFrom({ userAgent: UA.windows, primaryPointerCoarse: true, anyPointerFine: true, maxTouchPoints: 10 }),
-    ).toBe("windows");
+  it("names the right desktop-site control for each phone", () => {
+    expect(questSteps("ios").join(" ")).toContain("aA");
+    expect(questSteps("android").join(" ")).toContain("⋮");
+    expect(questSteps("ios").join(" ")).not.toContain("⋮");
   });
 
-  it("catches an iPad pretending to be a Mac", () => {
-    // iPadOS 13+ sends a desktop Macintosh user-agent; no mouse gives it away.
-    expect(
-      platformFrom({ userAgent: UA.ipadOs, primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 5 }),
-    ).toBe("touch");
-    // A real Mac with a trackpad must not be caught by that rule.
-    expect(
-      platformFrom({ userAgent: UA.mac, primaryPointerCoarse: false, anyPointerFine: true, maxTouchPoints: 0 }),
-    ).toBe("mac");
+  it("never tells a phone to press a keyboard shortcut", () => {
+    for (const platform of ["ios", "android"] as const) {
+      const steps = questSteps(platform).join(" ");
+      expect(steps).not.toContain("⌘");
+      expect(steps).not.toContain("Ctrl");
+      expect(steps).toContain("Press and hold");
+    }
   });
 
-  it("names the modifier from the desktop it is on", () => {
-    const desktop = { primaryPointerCoarse: false, anyPointerFine: true, maxTouchPoints: 0 };
-    expect(platformFrom({ userAgent: UA.mac, ...desktop })).toBe("mac");
-    expect(platformFrom({ userAgent: UA.windows, ...desktop })).toBe("windows");
+  it("does not send a desktop through the desktop-site step", () => {
+    for (const platform of ["mac", "windows"] as const) {
+      expect(questSteps(platform).join(" ")).not.toMatch(/desktop site/i);
+    }
   });
 
-  it("falls back to desktop when the browser reports nothing useful", () => {
-    // Media queries can be unavailable; the desktop steps are the safer default
-    // because they are also what a crawler and a no-JS reader see.
-    expect(
-      platformFrom({ userAgent: "", primaryPointerCoarse: false, anyPointerFine: false, maxTouchPoints: 0 }),
-    ).toBe("windows");
+  it("names the modifier the desktop actually uses", () => {
+    expect(questSteps("mac").join(" ")).toContain("⌘A then ⌘C");
+    expect(questSteps("windows").join(" ")).toContain("Ctrl+A then Ctrl+C");
+    expect(questSteps("mac").join(" ")).not.toContain("Ctrl");
+  });
+
+  it("explains the desktop-site step only where it appears", () => {
+    expect(stepsNote("ios")).toContain("mobile site has no class schedule");
+    expect(stepsNote("android")).not.toBeNull();
+    expect(stepsNote("mac")).toBeNull();
+    expect(stepsNote("windows")).toBeNull();
   });
 });
 
-describe("platformFrom, when the pointer signals lie", () => {
-  // Both of these report a coarse primary pointer and no fine pointer, which is
-  // what a phone looks like. Neither is one.
-  const looksLikeAPhone = { primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 10 };
+describe("platformFrom", () => {
+  const fingersOnly = { primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 5 };
+  const desktop = { primaryPointerCoarse: false, anyPointerFine: true, maxTouchPoints: 0 };
 
-  it("trusts a desktop user-agent over the pointer", () => {
+  it("separates iOS from Android, because the browser control differs", () => {
+    expect(platformFrom({ userAgent: UA.iphone, ...fingersOnly })).toBe("ios");
+    expect(platformFrom({ userAgent: UA.androidPhone, ...fingersOnly })).toBe("android");
+    expect(platformFrom({ userAgent: UA.androidTablet, ...fingersOnly })).toBe("android");
+  });
+
+  it("catches an iPad pretending to be a Mac", () => {
+    expect(platformFrom({ userAgent: UA.ipadOs, ...fingersOnly })).toBe("ios");
+    expect(platformFrom({ userAgent: UA.mac, ...desktop })).toBe("mac");
+  });
+
+  it("trusts a desktop user-agent over pointer signals that look like a phone", () => {
+    // Headless Chrome and a touchscreen laptop both report exactly this.
+    const looksLikeAPhone = { primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 10 };
     expect(platformFrom({ userAgent: UA.windows, ...looksLikeAPhone })).toBe("windows");
-    // A Mac reporting phone-like pointers is still a Mac: zero touch points.
-    expect(
-      platformFrom({ ...looksLikeAPhone, userAgent: UA.mac, maxTouchPoints: 0 }),
-    ).toBe("mac");
+    expect(platformFrom({ userAgent: UA.linux, ...looksLikeAPhone })).toBe("windows");
+    expect(platformFrom({ userAgent: UA.cros, ...looksLikeAPhone })).toBe("windows");
+    // A Mac with no touch points stays a Mac however coarse it claims to be.
+    expect(platformFrom({ userAgent: UA.mac, ...looksLikeAPhone, maxTouchPoints: 0 })).toBe("mac");
   });
 
-  it("still catches a real phone when the pointer agrees", () => {
-    expect(platformFrom({ userAgent: UA.iphone, ...looksLikeAPhone })).toBe("touch");
+  it("falls back to the pointer only for an unrecognised user-agent", () => {
+    expect(platformFrom({ userAgent: "", ...fingersOnly })).toBe("android");
+    expect(platformFrom({ userAgent: "", ...desktop })).toBe("windows");
   });
+});
 
-  it("reads Linux and ChromeOS as desktops", () => {
-    const linux = "Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0 Safari/537.36";
-    const cros = "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) Chrome/126.0 Safari/537.36";
-    expect(platformFrom({ userAgent: linux, ...looksLikeAPhone })).toBe("windows");
-    expect(platformFrom({ userAgent: cros, ...looksLikeAPhone })).toBe("windows");
+describe("isTouch", () => {
+  it("is true for exactly the two phone platforms", () => {
+    expect(PLATFORMS.filter(isTouch)).toEqual(["ios", "android"]);
   });
 });
