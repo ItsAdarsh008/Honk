@@ -12,6 +12,7 @@ yours to make first.
 
 ```
 CLAUDE_DESIGN_PROMPT.md            ← the brief. Start here.
+LINKEDIN_POST.md                   ← outline + draft for the LinkedIn launch post
 screenshots/README.md              ← what to capture, and for which slide
 
 brand/
