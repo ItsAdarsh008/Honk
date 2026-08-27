@@ -9,15 +9,9 @@
  * pasting and the payoff.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseQuestSchedule, type ParseResult } from "@/lib/quest/parse";
-import {
-  detectPlatform,
-  questSteps,
-  stepsNote,
-  type Platform,
-} from "@/lib/quest/instructions";
 import { savePending, clearPending } from "@/lib/pending";
 import { termName } from "@/lib/time";
 import { assignCourseColors } from "@/lib/colors";
@@ -131,44 +125,20 @@ export function PasteFlow({ signedIn }: Props) {
 
       <div id="paste-help" className="mt-6">
         <p className="section-label">How to get it</p>
-        <QuestSteps />
+        <ol className="mt-3 space-y-2.5">
+          {[
+            "Open Quest and go to Enroll → My Class Schedule.",
+            "Switch to List View.",
+            "Select the whole page and copy it, then paste it above.",
+          ].map((step, i) => (
+            <li key={step} className="flex gap-3 text-[15px] text-[var(--ink-soft)]">
+              <span className="mono mt-0.5 text-[11px] text-[var(--ink-faint)]">{i + 1}</span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
       </div>
     </div>
-  );
-}
-
-/**
- * The steps, matched to whatever you are holding.
- *
- * Detection runs after mount rather than during render: the server has no way
- * to know what the pointer is, and guessing would mean the markup changing
- * underneath React on hydration. Desktop is what renders first because it is
- * also what a crawler and a no-JS reader see, and it is the less confusing
- * wrong answer of the two.
- */
-function QuestSteps() {
-  const [platform, setPlatform] = useState<Platform>("windows");
-
-  useEffect(() => {
-    setPlatform(detectPlatform());
-  }, []);
-
-  const note = stepsNote(platform);
-
-  return (
-    <>
-      <ol className="mt-3 space-y-2.5">
-        {questSteps(platform).map((step, i) => (
-          <li key={step} className="flex gap-3 text-[15px] text-[var(--ink-soft)]">
-            <span className="mono mt-0.5 text-[11px] text-[var(--ink-faint)]">{i + 1}</span>
-            <span>{step}</span>
-          </li>
-        ))}
-      </ol>
-      {note && (
-        <p className="mt-3 text-[13px] leading-relaxed text-[var(--ink-faint)]">{note}</p>
-      )}
-    </>
   );
 }
 
