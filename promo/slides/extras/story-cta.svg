@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920"><rect width="1080" height="1920" fill="#FDFBF6"/><g transform="translate(84 300) scale(1.875)">
+    <g stroke="#33322C" stroke-width="1.05" stroke-linejoin="round" stroke-linecap="round" fill="none">
+      <path d="M1.6 16.4 6.0 18.0 4.4 21.4Z" fill="#C97B4A"/>
+      <path d="M4.6 18.6C7.2 15.8 11.0 14.4 14.6 14.9C17.4 15.3 19.4 16.8 20.4 19.0C21.4 21.3 21.0 24.0 19.3 25.8C17.4 27.8 14.2 28.7 11.0 28.3C7.6 27.9 5.0 25.9 3.9 23.0C3.3 21.4 3.6 19.8 4.6 18.6Z" fill="#C97B4A"/>
+      <path d="M5.4 22.6C7.6 25.0 11.2 26.4 14.8 26.0C17.2 25.7 19.0 24.6 20.0 23.0C20.4 24.6 19.9 26.3 18.6 27.4C16.7 29.0 13.6 29.6 10.6 29.1C7.4 28.6 5.0 26.6 4.2 24.0C4.4 23.4 4.8 22.9 5.4 22.6Z" fill="#E0A878"/>
+      <path d="M14.0 16.6C13.4 12.6 15.2 9.0 18.6 7.2" stroke="#33322C" stroke-width="4.6"/>
+      <ellipse cx="22.4" cy="6.6" rx="4.1" ry="3.7" fill="#33322C" stroke="none"/>
+      <path d="M25.9 5.2 31.3 6.9 25.9 8.6Z" fill="#33322C" stroke="none"/>
+      <path d="M21.0 3.6C22.2 4.6 22.6 6.4 22.2 8.2C22.0 9.2 21.5 9.9 20.9 10.2C19.7 8.4 19.6 5.6 21.0 3.6Z" fill="#FDFBF6" stroke="none"/>
+    </g>
+  </g><text x="164" y="344" font-family="Segoe UI, -apple-system, Helvetica Neue, Arial, sans-serif" font-size="42" font-weight="600" fill="#33322C" letter-spacing="-0.8">Honk</text><text font-family="Segoe UI, -apple-system, Helvetica Neue, Arial, sans-serif" font-size="82" font-weight="600" fill="#33322C" letter-spacing="-2" text-anchor="start" xml:space="preserve"><tspan x="84" y="520">Paste your schedule.</tspan><tspan x="84" y="618">See who's in it.</tspan></text><text font-family="Segoe UI, -apple-system, Helvetica Neue, Arial, sans-serif" font-size="34" font-weight="400" fill="#75726A" letter-spacing="0" text-anchor="start" xml:space="preserve"><tspan x="84" y="790">Who shares your lectures, and when you and your</tspan><tspan x="84" y="840">friends are free at the same time.</tspan></text><rect x="84" y="960" width="912" height="620" rx="30" fill="#FFFFFF" stroke="#EAE5DA" stroke-width="2"/>
+<rect x="110" y="1006" width="860" height="2" fill="#EAE5DA"/>
+<text x="257.8" y="1004" text-anchor="middle" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="20" fill="#A5A096" letter-spacing="1.6">MON</text>
+<text x="417.4" y="1004" text-anchor="middle" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="20" fill="#A5A096" letter-spacing="1.6">TUE</text>
+<text x="577" y="1004" text-anchor="middle" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="20" fill="#A5A096" letter-spacing="1.6">WED</text>
+<text x="736.6" y="1004" text-anchor="middle" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="20" fill="#A5A096" letter-spacing="1.6">THU</text>
+<text x="896.2" y="1004" text-anchor="middle" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="20" fill="#A5A096" letter-spacing="1.6">FRI</text>
+<rect x="184" y="1065.57" width="712" height="1.5"
+        fill="#EAE5DA" opacity="0.7"/>
+<text x="168" y="1072.57" text-anchor="end" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="18" fill="#A5A096">9:00 AM</text>
+<rect x="184" y="1140.71" width="712" height="1.5"
+        fill="#EAE5DA" opacity="0.7"/>
+<text x="168" y="1147.71" text-anchor="end" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="18" fill="#A5A096">10:00 AM</text>
+<rect x="184" y="1215.86" width="712" height="1.5"
+        fill="#EAE5DA" opacity="0.7"/>
+<text x="168" y="1222.86" text-anchor="end" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="18" fill="#A5A096">11:00 AM</text>
+<rect x="184" y="1291" width="712" height="1.5"
+        fill="#EAE5DA" opacity="0.7"/>
+<text x="168" y="1298" text-anchor="end" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="18" fill="#A5A096">12:00 PM</text>
+<rect x="184" y="1366.14" width="712" height="1.5"
+        fill="#EAE5DA" opacity="0.7"/>
+<text x="168" y="1373.14" text-anchor="end" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="18" fill="#A5A096">1:00 PM</text>
+<rect x="184" y="1441.29" width="712" height="1.5"
+        fill="#EAE5DA" opacity="0.7"/>
+<text x="168" y="1448.29" text-anchor="end" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="18" fill="#A5A096">2:00 PM</text>
+<rect x="184" y="1516.43" width="712" height="1.5"
+        fill="#EAE5DA" opacity="0.7"/>
+<text x="168" y="1523.43" text-anchor="end" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace"
+        font-size="18" fill="#A5A096">3:00 PM</text>
+<rect x="184" y="1178.29" width="147.6" height="62.62" rx="14"
+        fill="#B5CDAA" stroke="#33322C" stroke-width="3"/>
+<text x="196" y="1205.29" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">CS 135</text>
+<text x="196" y="1228.29" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">MC 4020</text>
+<rect x="184" y="1403.71" width="147.6" height="75.14" rx="14"
+        fill="#AFC8DE" stroke="rgba(0,0,0,0.07)" stroke-width="2"/>
+<text x="196" y="1430.71" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">MATH 135</text>
+<text x="196" y="1453.71" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">MC 4045</text>
+<rect x="343.6" y="1103.14" width="147.6" height="100.19" rx="14"
+        fill="#F3CBA5" stroke="rgba(0,0,0,0.07)" stroke-width="2"/>
+<text x="355.6" y="1130.14" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">BU 111</text>
+<text x="355.6" y="1153.14" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">BA 201</text>
+<rect x="343.6" y="1366.14" width="147.6" height="87.67" rx="14"
+        fill="#DCBBD1" stroke="rgba(0,0,0,0.07)" stroke-width="2"/>
+<text x="355.6" y="1393.14" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">ECON 101</text>
+<text x="355.6" y="1416.14" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">RCH 103</text>
+<rect x="503.2" y="1178.29" width="147.6" height="62.62" rx="14"
+        fill="#B5CDAA" stroke="#33322C" stroke-width="3"/>
+<text x="515.2" y="1205.29" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">CS 135</text>
+<text x="515.2" y="1228.29" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">MC 4020</text>
+<rect x="503.2" y="1366.14" width="147.6" height="100.19" rx="14"
+        fill="#DCBBD1" stroke="rgba(0,0,0,0.07)" stroke-width="2"/>
+<text x="515.2" y="1393.14" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">ECON 101</text>
+<text x="515.2" y="1416.14" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">RCH 103</text>
+<rect x="662.8" y="1140.71" width="147.6" height="100.19" rx="14"
+        fill="#EDDDA4" stroke="rgba(0,0,0,0.07)" stroke-width="2"/>
+<text x="674.8" y="1167.71" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">SPCOM</text>
+<text x="674.8" y="1190.71" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">DWE 3522</text>
+<rect x="662.8" y="1403.71" width="147.6" height="75.14" rx="14"
+        fill="#AFC8DE" stroke="rgba(0,0,0,0.07)" stroke-width="2"/>
+<text x="674.8" y="1430.71" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">MATH 135</text>
+<text x="674.8" y="1453.71" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">MC 4045</text>
+<rect x="822.4" y="1178.29" width="147.6" height="62.62" rx="14"
+        fill="#B5CDAA" stroke="#33322C" stroke-width="3"/>
+<text x="834.4" y="1205.29" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">CS 135</text>
+<text x="834.4" y="1228.29" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">MC 4020</text>
+<rect x="822.4" y="1391.19" width="147.6" height="100.19" rx="14"
+        fill="#C7BADD" stroke="rgba(0,0,0,0.07)" stroke-width="2"/>
+<text x="834.4" y="1418.19" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="18" font-weight="600"
+        fill="#33322C" letter-spacing="-0.3">MATH 137</text>
+<text x="834.4" y="1441.19" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="16"
+          fill="#33322C" opacity="0.66">MC 2054</text>
+<line x1="577" y1="1250.9" x2="577" y2="1356.14"
+        stroke="#DDD6C7" stroke-width="2"/>
+<rect x="533" y="1286.52" width="88" height="34" rx="8" fill="#FFFFFF"/>
+<text x="577" y="1310.52" text-anchor="middle" font-family="Consolas, SF Mono, Menlo, Liberation Mono, monospace" font-size="19"
+        fill="#A5A096">1h 40m</text><rect x="84" y="1660" width="912" height="112" rx="24" fill="#C97B4A"/><text x="540" y="1732" text-anchor="middle" font-family="Segoe UI, -apple-system, Helvetica Neue, Arial, sans-serif" font-size="38" font-weight="600" fill="#FFFDFA">honk-loo.vercel.app</text></svg>
