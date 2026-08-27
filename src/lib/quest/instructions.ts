@@ -35,6 +35,8 @@ export interface PlatformSignals {
   primaryPointerCoarse: boolean;
   /** `(any-pointer: fine)` — whether a mouse or trackpad exists at all. */
   anyPointerFine: boolean;
+  /** `navigator.maxTouchPoints`. A real Mac reports 0; an iPad reports 5. */
+  maxTouchPoints: number;
 }
 
 /**
@@ -57,8 +59,10 @@ export function platformFrom(signals: PlatformSignals): Platform {
 
   if (/iPhone|iPod|Android.*Mobile|Windows Phone/i.test(ua)) return "touch";
   if (/iPad|Android(?!.*Mobile)|Tablet|Silk/i.test(ua)) return "touch";
-  // An iPad claiming to be a Mac: the absent mouse is the only tell.
-  if (/Macintosh/.test(ua) && fingersOnly) return "touch";
+  // An iPad claiming to be a Mac. Touch points are the established tell and the
+  // only one that holds up: a real Mac reports 0 however coarse it claims its
+  // pointer is, and Safari has sent this user-agent since iPadOS 13.
+  if (/Macintosh/.test(ua) && signals.maxTouchPoints > 1) return "touch";
 
   if (/Macintosh|Mac OS X/.test(ua)) return "mac";
   if (/Windows NT|X11|Linux|CrOS/.test(ua)) return "windows";
@@ -76,5 +80,6 @@ export function detectPlatform(): Platform {
     userAgent: navigator.userAgent ?? "",
     primaryPointerCoarse: media("(pointer: coarse)"),
     anyPointerFine: media("(any-pointer: fine)"),
+    maxTouchPoints: navigator.maxTouchPoints ?? 0,
   });
 }

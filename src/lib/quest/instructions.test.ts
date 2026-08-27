@@ -46,14 +46,14 @@ describe("platformFrom", () => {
   it("reads a phone as touch", () => {
     for (const ua of [UA.iphone, UA.androidPhone]) {
       expect(
-        platformFrom({ userAgent: ua, primaryPointerCoarse: true, anyPointerFine: false }),
+        platformFrom({ userAgent: ua, primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 5 }),
       ).toBe("touch");
     }
   });
 
   it("reads a tablet as touch", () => {
     expect(
-      platformFrom({ userAgent: UA.androidTablet, primaryPointerCoarse: true, anyPointerFine: false }),
+      platformFrom({ userAgent: UA.androidTablet, primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 5 }),
     ).toBe("touch");
   });
 
@@ -61,23 +61,23 @@ describe("platformFrom", () => {
     // The bug this heuristic exists for: a coarse pointer is present, but so is
     // a trackpad, and the keyboard shortcut is the faster instruction.
     expect(
-      platformFrom({ userAgent: UA.windows, primaryPointerCoarse: true, anyPointerFine: true }),
+      platformFrom({ userAgent: UA.windows, primaryPointerCoarse: true, anyPointerFine: true, maxTouchPoints: 10 }),
     ).toBe("windows");
   });
 
   it("catches an iPad pretending to be a Mac", () => {
     // iPadOS 13+ sends a desktop Macintosh user-agent; no mouse gives it away.
     expect(
-      platformFrom({ userAgent: UA.ipadOs, primaryPointerCoarse: true, anyPointerFine: false }),
+      platformFrom({ userAgent: UA.ipadOs, primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 5 }),
     ).toBe("touch");
     // A real Mac with a trackpad must not be caught by that rule.
     expect(
-      platformFrom({ userAgent: UA.mac, primaryPointerCoarse: false, anyPointerFine: true }),
+      platformFrom({ userAgent: UA.mac, primaryPointerCoarse: false, anyPointerFine: true, maxTouchPoints: 0 }),
     ).toBe("mac");
   });
 
   it("names the modifier from the desktop it is on", () => {
-    const desktop = { primaryPointerCoarse: false, anyPointerFine: true };
+    const desktop = { primaryPointerCoarse: false, anyPointerFine: true, maxTouchPoints: 0 };
     expect(platformFrom({ userAgent: UA.mac, ...desktop })).toBe("mac");
     expect(platformFrom({ userAgent: UA.windows, ...desktop })).toBe("windows");
   });
@@ -86,7 +86,7 @@ describe("platformFrom", () => {
     // Media queries can be unavailable; the desktop steps are the safer default
     // because they are also what a crawler and a no-JS reader see.
     expect(
-      platformFrom({ userAgent: "", primaryPointerCoarse: false, anyPointerFine: false }),
+      platformFrom({ userAgent: "", primaryPointerCoarse: false, anyPointerFine: false, maxTouchPoints: 0 }),
     ).toBe("windows");
   });
 });
@@ -94,11 +94,14 @@ describe("platformFrom", () => {
 describe("platformFrom, when the pointer signals lie", () => {
   // Both of these report a coarse primary pointer and no fine pointer, which is
   // what a phone looks like. Neither is one.
-  const looksLikeAPhone = { primaryPointerCoarse: true, anyPointerFine: false };
+  const looksLikeAPhone = { primaryPointerCoarse: true, anyPointerFine: false, maxTouchPoints: 10 };
 
   it("trusts a desktop user-agent over the pointer", () => {
     expect(platformFrom({ userAgent: UA.windows, ...looksLikeAPhone })).toBe("windows");
-    expect(platformFrom({ userAgent: UA.mac, ...looksLikeAPhone })).toBe("touch");
+    // A Mac reporting phone-like pointers is still a Mac: zero touch points.
+    expect(
+      platformFrom({ ...looksLikeAPhone, userAgent: UA.mac, maxTouchPoints: 0 }),
+    ).toBe("mac");
   });
 
   it("still catches a real phone when the pointer agrees", () => {
