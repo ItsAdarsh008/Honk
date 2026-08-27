@@ -1,7 +1,7 @@
-import { clientIp, fail, json, readJson, requireDatabase } from "@/app/api/_lib";
+import { clientIp, fail, json, readAddress, readJson, requireDatabase } from "@/app/api/_lib";
 import { checkDailyCapacity } from "@/lib/auth/capacity";
 import { deliveryMode, sendLoginCode } from "@/lib/auth/email";
-import { checkRateLimit, createLoginCode, normalizeEmail } from "@/lib/auth/session";
+import { checkRateLimit, createLoginCode } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
@@ -33,10 +33,9 @@ export async function POST(request: Request) {
   // Address check first: it is pure, and it should say the same thing whether
   // or not persistence happens to be configured.
   const body = await readJson<{ email?: string }>(request);
-  const email = normalizeEmail(body?.email ?? "");
-  if (!email) {
-    return fail("Honk is Waterloo-only, so this needs to be a @uwaterloo.ca address.");
-  }
+  const address = readAddress(body?.email);
+  if (!address.ok) return address.response;
+  const email = address.email;
 
   const unavailable = requireDatabase();
   if (unavailable) return unavailable;

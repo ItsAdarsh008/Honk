@@ -130,6 +130,49 @@ export function sharedGapsForWeek(
   return out;
 }
 
+/**
+ * Move a whole week of busy time by some number of minutes, wrapping days.
+ *
+ * This is what makes a friend at a school in another time zone comparable at
+ * all. A UBC student's 9am Monday lecture is a Waterloo student's noon Monday,
+ * so before the two schedules can be intersected one of them has to be
+ * expressed in the other's clock. An interval pushed past midnight splits
+ * across two weekdays rather than being truncated, which is the case a naive
+ * `+= offset` gets wrong and which is exactly what a 3pm Vancouver class
+ * becomes in Newfoundland.
+ *
+ * Every school Honk is live at today is on Eastern time, so this is a no-op in
+ * production right now. It is here because the first school outside Ontario to
+ * turn on would otherwise show its friends free at the wrong hours, silently.
+ */
+export function shiftWeek(week: WeekBusy, minutes: number): WeekBusy {
+  if (minutes === 0) return week;
+  const DAY = 24 * 60;
+  const out = emptyWeek();
+
+  for (let weekday = 1; weekday <= 7; weekday += 1) {
+    for (const interval of week[weekday] ?? []) {
+      const shiftedStart = interval.start + minutes;
+      const carry = Math.floor(shiftedStart / DAY);
+      const start = shiftedStart - carry * DAY;
+      const end = interval.end + minutes - carry * DAY;
+      const day = (((weekday - 1 + carry) % 7) + 7) % 7 + 1;
+
+      if (end <= DAY) {
+        out[day].push({ start, end });
+      } else {
+        out[day].push({ start, end: DAY });
+        out[(day % 7) + 1].push({ start: 0, end: end - DAY });
+      }
+    }
+  }
+
+  for (let weekday = 1; weekday <= 7; weekday += 1) {
+    out[weekday] = mergeIntervals(out[weekday]);
+  }
+  return out;
+}
+
 /** Is this person free at this minute of this weekday? */
 export function isFreeAt(busy: Interval[], minute: number): boolean {
   if (minute < DAY_START || minute >= DAY_END) return false;

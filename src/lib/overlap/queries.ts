@@ -31,9 +31,12 @@ import {
   nextSharedGap,
   sharedGaps,
   sharedGapsForWeek,
+  shiftWeek,
   type Interval,
   type WeekBusy,
 } from "./intervals";
+import { schoolOrDefault } from "../schools";
+import { CAMPUS_TZ, tzOffsetMinutes } from "../time";
 
 export interface ScheduleMeeting {
   weekday: number;
@@ -44,7 +47,8 @@ export interface ScheduleMeeting {
 
 export interface ScheduleSection {
   sectionId: number;
-  classNumber: number;
+  /** PeopleSoft prints one; most portals do not. */
+  classNumber: number | null;
   sectionCode: string;
   component: string;
   instructor: string | null;
@@ -64,12 +68,19 @@ export interface Classmate {
   id: string;
   handle: string | null;
   displayName: string | null;
+  /**
+   * Which university. Shown next to a name only when it differs from the
+   * viewer's, which is the only time it tells anyone anything — and it is not
+   * a privacy loss: an address at that school is what created the account, and
+   * the school is the reason the two of them can see each other at all.
+   */
+  schoolId: string;
   relationship: RelationshipState;
 }
 
 export interface ClassCount {
   sectionId: number;
-  classNumber: number;
+  classNumber: number | null;
   sectionCode: string;
   component: string;
   courseId: number;
@@ -183,7 +194,13 @@ export async function getMySchedule(
 
   const out = [...byCourse.values()];
   for (const course of out) {
-    course.sections.sort((a, b) => a.component.localeCompare(b.component) || a.classNumber - b.classNumber);
+    // Class number where there is one, section code where there is not.
+    course.sections.sort(
+      (a, b) =>
+        a.component.localeCompare(b.component) ||
+        (a.classNumber ?? 0) - (b.classNumber ?? 0) ||
+        a.sectionCode.localeCompare(b.sectionCode),
+    );
     for (const section of course.sections) {
       section.meetings.sort((a, b) => a.weekday - b.weekday || a.startMin - b.startMin);
     }
@@ -193,15 +210,26 @@ export async function getMySchedule(
 }
 
 /**
- * Busy intervals for a set of users, keyed by user id.
+ * Busy intervals for a set of users, keyed by user id, all expressed in one
+ * time zone.
  *
  * Private on purpose. Every caller must have already established that the
  * viewer is allowed to see these people's time.
+ *
+ * `viewerTimezone` is what makes a cross-campus friend comparable. Meetings
+ * are stored in the campus-local minutes their portal printed, which is the
+ * only sane thing to store — but two people's minutes only mean the same thing
+ * if their campuses keep the same clock. Everywhere Honk is live does today,
+ * so the shift is zero and this costs nothing; the moment a school west of
+ * Ontario turns on, it is the difference between "free at 2" meaning the same
+ * hour to both of them and meaning two different afternoons.
  */
 async function busyWeeksFor(
   userIds: string[],
   termCode: string,
   db: Db,
+  viewerTimezone: string = CAMPUS_TZ,
+  now: Date = new Date(),
 ): Promise<Map<string, WeekBusy>> {
   const out = new Map<string, WeekBusy>();
   if (!userIds.length) return out;
@@ -209,24 +237,35 @@ async function busyWeeksFor(
   const rows = await db
     .select({
       userId: enrollments.userId,
+      schoolId: users.schoolId,
       weekday: meetings.weekday,
       startMin: meetings.startMin,
       endMin: meetings.endMin,
     })
     .from(enrollments)
     .innerJoin(meetings, eq(meetings.sectionId, enrollments.sectionId))
+    .innerJoin(users, eq(users.id, enrollments.userId))
     .where(and(inArray(enrollments.userId, userIds), eq(enrollments.termCode, termCode)));
 
+  const schoolOf = new Map<string, string>();
   for (const id of userIds) out.set(id, emptyWeek());
   for (const row of rows) {
     const week = out.get(row.userId);
     if (!week) continue;
+    schoolOf.set(row.userId, row.schoolId);
     week[row.weekday].push({ start: row.startMin, end: row.endMin });
+  }
+
+  const viewerOffset = tzOffsetMinutes(viewerTimezone, now);
+  for (const [id, week] of out) {
+    const theirTz = schoolOrDefault(schoolOf.get(id)).timezone;
+    const shift = viewerOffset - tzOffsetMinutes(theirTz, now);
+    if (shift !== 0) out.set(id, shiftWeek(week, shift));
   }
   return out;
 }
 
-/** The caller's own busy week. */
+/** The caller's own busy week, in their own campus's clock. */
 export async function getMyBusyWeek(
   userId: string,
   termCode: string,
@@ -234,6 +273,16 @@ export async function getMyBusyWeek(
 ): Promise<WeekBusy> {
   const weeks = await busyWeeksFor([userId], termCode, db);
   return weeks.get(userId) ?? emptyWeek();
+}
+
+/** The time zone to read a user's own week in. */
+async function timezoneFor(userId: string, db: Db): Promise<string> {
+  const [row] = await db
+    .select({ schoolId: users.schoolId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return schoolOrDefault(row?.schoolId).timezone;
 }
 
 /* ------------------------------------------------------------------ *
@@ -338,6 +387,7 @@ export async function getClassmates(
       id: users.id,
       handle: users.handle,
       displayName: users.displayName,
+      schoolId: users.schoolId,
     })
     .from(enrollments)
     .innerJoin(users, eq(users.id, enrollments.userId))
@@ -383,7 +433,13 @@ export async function getVisibleProfile(
   if (blocked.includes(targetId)) return null;
 
   const [target] = await db
-    .select({ id: users.id, handle: users.handle, displayName: users.displayName, discoverable: users.discoverable })
+    .select({
+      id: users.id,
+      handle: users.handle,
+      displayName: users.displayName,
+      schoolId: users.schoolId,
+      discoverable: users.discoverable,
+    })
     .from(users)
     .where(and(eq(users.id, targetId), isNotNull(users.verifiedAt)))
     .limit(1);
@@ -407,6 +463,7 @@ export async function getVisibleProfile(
     id: target.id,
     handle: target.handle,
     displayName: target.displayName,
+    schoolId: target.schoolId,
     relationship,
     sharedSectionCount: count,
   };
@@ -451,7 +508,7 @@ export async function getSharedGapsWith(
   db: Db = getDb(),
 ): Promise<WeekBusy | null> {
   if (!(await areFriends(userId, friendId, db))) return null;
-  const weeks = await busyWeeksFor([userId, friendId], termCode, db);
+  const weeks = await busyWeeksFor([userId, friendId], termCode, db, await timezoneFor(userId, db));
   return sharedGapsForWeek([weeks.get(userId) ?? emptyWeek(), weeks.get(friendId) ?? emptyWeek()]);
 }
 
@@ -481,11 +538,16 @@ export async function getFriendsWithNextGap(
   const ids = await friendIds(userId, db);
   if (!ids.length) return [];
 
-  const weeks = await busyWeeksFor([userId, ...ids], termCode, db);
+  const weeks = await busyWeeksFor([userId, ...ids], termCode, db, await timezoneFor(userId, db));
   const mine = weeks.get(userId) ?? emptyWeek();
 
   const profiles = await db
-    .select({ id: users.id, handle: users.handle, displayName: users.displayName })
+    .select({
+      id: users.id,
+      handle: users.handle,
+      displayName: users.displayName,
+      schoolId: users.schoolId,
+    })
     .from(users)
     .where(inArray(users.id, ids));
 
@@ -524,12 +586,17 @@ export async function getFreeNow(
   const ids = await friendIds(userId, db);
   if (!ids.length) return [];
 
-  const weeks = await busyWeeksFor([userId, ...ids], termCode, db);
+  const weeks = await busyWeeksFor([userId, ...ids], termCode, db, await timezoneFor(userId, db));
   const mine = weeks.get(userId) ?? emptyWeek();
   if (!isFreeAt(mine[now.weekday] ?? [], now.minute)) return [];
 
   const profiles = await db
-    .select({ id: users.id, handle: users.handle, displayName: users.displayName })
+    .select({
+      id: users.id,
+      handle: users.handle,
+      displayName: users.displayName,
+      schoolId: users.schoolId,
+    })
     .from(users)
     .where(inArray(users.id, ids));
 

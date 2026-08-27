@@ -1,60 +1,44 @@
 /**
- * Quest class-schedule parser.
+ * PeopleSoft class-schedule parser — Waterloo's Quest, McMaster's Mosaic.
  *
- * Input is whatever lands on the clipboard after Ctrl+A / Ctrl+C on Quest's
- * "My Class Schedule" List View. This is a line-oriented state machine rather
- * than one mega-regex: course headers switch state, rows accumulate into the
+ * Input is whatever lands on the clipboard after Ctrl+A / Ctrl+C on the "My
+ * Class Schedule" List View. This is a line-oriented state machine rather than
+ * one mega-regex: course headers switch state, rows accumulate into the
  * current course, and a row that cannot be read is reported as a warning
  * instead of being silently dropped.
  *
- * Pure. No I/O, no imports. It runs in the browser so the raw paste never has
- * to reach the server before the user has seen what was extracted.
+ * The two campuses share this file because they are the same product: Oracle
+ * Campus Solutions, differently branded. Mosaic prints the same seven columns
+ * in the same order down to the "Class Nbr" heading, so a McMaster paste and a
+ * Waterloo paste differ only in the course codes inside them. That is worth
+ * saying out loud, because it is the reason McMaster was cheap to add and York
+ * was not.
+ *
+ * Pure: no I/O, and nothing imported but the shared result types. It runs in
+ * the browser so the raw paste never has to reach the server before the user
+ * has seen what was extracted.
  */
 
-export interface ParsedMeeting {
-  /** 1 = Monday ... 7 = Sunday */
-  weekday: number;
-  /** Minutes from midnight, local campus time. */
-  startMin: number;
-  endMin: number;
-  /** Null when Quest said TBA. */
-  location: string | null;
-}
+import {
+  deriveTermCode,
+  termCodeForDate,
+  type ParsedCourse,
+  type ParsedMeeting,
+  type ParseResult,
+  type ParsedSection,
+  type ParseWarning,
+} from "../schedule/types";
 
-export type CourseStatus = "enrolled" | "dropped" | "waitlisted" | "unknown";
+export type {
+  CourseStatus,
+  ParsedCourse,
+  ParsedMeeting,
+  ParsedSection,
+  ParseResult,
+  ParseWarning,
+} from "../schedule/types";
 
-export interface ParsedSection {
-  classNumber: number;
-  sectionCode: string;
-  component: string;
-  instructor: string | null;
-  /** ISO yyyy-mm-dd, or null when Quest said TBA. */
-  startDate: string | null;
-  endDate: string | null;
-  meetings: ParsedMeeting[];
-}
-
-export interface ParsedCourse {
-  subject: string;
-  catalog: string;
-  title: string | null;
-  status: CourseStatus;
-  sections: ParsedSection[];
-}
-
-export interface ParseWarning {
-  /** 1-indexed line number in the original paste; 0 for course-level notes. */
-  line: number;
-  text: string;
-  reason: string;
-}
-
-export interface ParseResult {
-  courses: ParsedCourse[];
-  warnings: ParseWarning[];
-  /** Waterloo term code derived from section dates, e.g. "1269". */
-  termCode: string | null;
-}
+export { deriveTermCode, termCodeForDate };
 
 /* ------------------------------------------------------------------ *
  * Days
@@ -172,7 +156,15 @@ export function parseTimeRange(
  * Line shapes
  * ------------------------------------------------------------------ */
 
-const COURSE_HEADER_RE = /^([A-Za-z]{2,8})\s+(\d{1,3}[A-Za-z]{0,2})\s*[-–—]\s*(.+?)\s*$/;
+/**
+ * `CS 135 - Designing Functional Programs`, and Mosaic's `COMPSCI 1MD3 - …`.
+ *
+ * The catalog half is deliberately loose — a leading digit and then anything
+ * alphanumeric. Waterloo prints `135` and `245B`, McMaster prints `1MD3` and
+ * `2C03`, and a stricter pattern silently drops every McMaster course while
+ * still parsing every Waterloo one, which is the worst way for this to fail.
+ */
+const COURSE_HEADER_RE = /^([A-Za-z]{2,10})\s+(\d[0-9A-Za-z]{0,6})\s*[-–—]\s*(.+?)\s*$/;
 const CLASS_NBR_RE = /^\d{4,5}$/;
 const DATE_RANGE_RE =
   /(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[-–—]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/;
@@ -598,36 +590,6 @@ function meetingsFrom(daysTimes: string | null, room: string | null): ParsedMeet
     endMin: range.endMin,
     location,
   }));
-}
-
-/* ------------------------------------------------------------------ *
- * Term code
- * ------------------------------------------------------------------ */
-
-/**
- * Waterloo term codes are `1` + two-digit year + term digit
- * (1 = Winter, 5 = Spring, 9 = Fall). Fall 2026 is 1269.
- */
-export function termCodeForDate(iso: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) return null;
-  const year = Number(m[1]);
-  const month = Number(m[2]);
-  if (month < 1 || month > 12) return null;
-  const digit = month >= 9 ? 9 : month >= 5 ? 5 : 1;
-  const century = Math.floor(year / 100) - 19;
-  return `${century}${String(year % 100).padStart(2, "0")}${digit}`;
-}
-
-/** Derive the term from the earliest section start date in the paste. */
-export function deriveTermCode(courses: ParsedCourse[]): string | null {
-  const starts = courses
-    .flatMap((c) => c.sections)
-    .map((s) => s.startDate)
-    .filter((d): d is string => Boolean(d))
-    .sort();
-  if (!starts.length) return null;
-  return termCodeForDate(starts[0]);
 }
 
 /* ------------------------------------------------------------------ *

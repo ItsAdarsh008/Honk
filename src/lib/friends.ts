@@ -21,6 +21,8 @@ export interface PublicProfile {
   id: string;
   handle: string | null;
   displayName: string | null;
+  /** Which university, so a cross-campus name can be labelled as one. */
+  schoolId: string;
 }
 
 export interface FriendRequest {
@@ -39,6 +41,7 @@ const PUBLIC_COLUMNS = {
   id: users.id,
   handle: users.handle,
   displayName: users.displayName,
+  schoolId: users.schoolId,
 };
 
 function pairWhere(a: string, b: string) {

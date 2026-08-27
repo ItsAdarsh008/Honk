@@ -22,10 +22,10 @@ export async function generateMetadata({
   const title = name ? `${name} invited you to Honk` : "You've been invited to Honk";
   return {
     title,
-    description: "Paste your Quest schedule and see which classes you share.",
+    description: "Paste your class schedule and see which classes you share.",
     openGraph: {
       title,
-      description: "Paste your Quest schedule and see which classes you share.",
+      description: "Paste your class schedule and see which classes you share.",
     },
   };
 }
@@ -50,7 +50,7 @@ export default async function InvitePage({
           Paste your schedule to see what you share.
         </h1>
         <p className="max-w-lg text-[16px] leading-relaxed text-[var(--ink-soft)]">
-          Honk reads your Quest schedule and lays out your week. You'll see it before you sign
+          Honk reads your class schedule and lays out your week. You'll see it before you sign
           up for anything.
         </p>
       </section>

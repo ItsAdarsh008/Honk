@@ -26,7 +26,33 @@ off and why, and everything already standing.
 
 ## What is left
 
-**Nothing blocking. Honk is ready for beta testers.**
+### One thing blocking: the schools migration
+
+Honk now runs at five universities, and that added three columns and changed two
+unique constraints. **The database has to be migrated before this deploys**, or
+every save fails against the live schema.
+
+```bash
+psql "$DATABASE_URL" -f scripts/migrate-schools.sql
+npm run db:push          # should now report no changes
+```
+
+It is idempotent and it keeps every existing row: each one is stamped
+`waterloo`, and section identity carries over unchanged because Quest's class
+number is still the key where there is one. Nobody's classmates move.
+
+`db:push` alone is **not** enough. Two of the new columns are NOT NULL with a
+value that has to be computed from rows already present, and push would either
+fail or drop the old constraint with nothing replacing it. Run the file first.
+
+On a fresh database, skip it — `db:push` builds the right shape from scratch.
+
+This has not been run against the live database yet. It is the one step that
+needs a human at the terminal.
+
+---
+
+**Otherwise nothing blocking. Honk is ready for beta testers.**
 
 Sign-in is passkeys — Face ID, a fingerprint, or a screen lock. No code, no
 password, nothing that has to survive a mail gateway. That was the last thing

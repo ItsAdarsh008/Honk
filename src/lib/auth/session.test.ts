@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateCode, hashCode, isWaterlooEmail, normalizeEmail, normalizeHandle } from "./session";
+import { checkAddress, generateCode, hashCode, normalizeEmail, normalizeHandle } from "./session";
 
 describe("normalizeEmail", () => {
   it("accepts a Waterloo address", () => {
@@ -34,9 +34,29 @@ describe("normalizeEmail", () => {
     expect(normalizeEmail(`${"a".repeat(300)}@uwaterloo.ca`)).toBeNull();
   });
 
-  it("agrees with isWaterlooEmail", () => {
-    expect(isWaterlooEmail("jdoe@uwaterloo.ca")).toBe(true);
-    expect(isWaterlooEmail("jdoe@gmail.com")).toBe(false);
+  it("accepts every school Honk is live at, and folds subdomains", () => {
+    expect(normalizeEmail("jdoe@yorku.ca")).toBe("jdoe@yorku.ca");
+    expect(normalizeEmail("jdoe@my.yorku.ca")).toBe("jdoe@yorku.ca");
+    expect(normalizeEmail("jdoe@mcmaster.ca")).toBe("jdoe@mcmaster.ca");
+    expect(normalizeEmail("jdoe@brocku.ca")).toBe("jdoe@brocku.ca");
+    expect(normalizeEmail("jdoe@guelphhumber.ca")).toBe("jdoe@guelphhumber.ca");
+  });
+
+  it("tells a school it has not launched at apart from one it does not know", () => {
+    // The difference the sign-in screen turns into an invitation rather than
+    // a red line under the box.
+    const queens = checkAddress("jdoe@queensu.ca");
+    expect(queens.ok).toBe(false);
+    expect(queens.ok === false && queens.reason).toBe("not_live");
+    expect(queens.ok === false && queens.reason === "not_live" && queens.school.short).toBe("Queen's");
+
+    const gmail = checkAddress("jdoe@gmail.com");
+    expect(gmail.ok === false && gmail.reason).toBe("not_a_school");
+  });
+
+  it("refuses an address at a school that is only in the beta list", () => {
+    expect(normalizeEmail("jdoe@utoronto.ca")).toBeNull();
+    expect(normalizeEmail("jdoe@gmail.com")).toBeNull();
   });
 });
 

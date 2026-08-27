@@ -18,7 +18,7 @@ export default async function PastePage() {
         </p>
       </div>
       <div className="card p-5 sm:p-6">
-        <PasteFlow signedIn={Boolean(user)} />
+        <PasteFlow signedIn={Boolean(user)} schoolId={user?.schoolId ?? null} />
       </div>
     </div>
   );

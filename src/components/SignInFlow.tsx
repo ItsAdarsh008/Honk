@@ -14,6 +14,8 @@ import { useRouter } from "next/navigation";
 import { clearPending, readPending } from "@/lib/pending";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { formatWait } from "@/lib/wait";
+import { getSchool, liveSchoolList, type School } from "@/lib/schools";
+import { BringHonkHere } from "./UniversityList";
 
 type Step = "email" | "code" | "profile" | "capacity";
 
@@ -27,7 +29,7 @@ const ENTRA_MESSAGES: Record<string, string> = {
   declined: "You cancelled that. Try again, or use a code below.",
   consent_required:
     "Waterloo hasn't approved Honk for direct sign-in yet. Use a code for now — it works the same.",
-  not_waterloo: "That account isn't a Waterloo one. Honk is Waterloo-only.",
+  not_waterloo: "That account isn't a Waterloo one. This button is Waterloo's own sign-in — use an address and a PIN instead.",
 };
 
 export function SignInFlow({
@@ -54,6 +56,13 @@ export function SignInFlow({
     entraStatus && entraStatus !== "ok" ? (ENTRA_MESSAGES[entraStatus] ?? null) : null,
   );
   const [devMode, setDevMode] = useState(false);
+  /**
+   * Set when the address belongs to a university Honk knows and has not
+   * launched at. The form is replaced by the offer to turn it on, because a
+   * red line under the box would be both useless and the last thing that
+   * person ever sees of Honk.
+   */
+  const [waitlisted, setWaitlisted] = useState<School | null>(null);
   const [hasPending, setHasPending] = useState(false);
   const [retryMinutes, setRetryMinutes] = useState<number | null>(null);
 
@@ -64,6 +73,22 @@ export function SignInFlow({
   useEffect(() => {
     setHasPending(readPending() !== null);
   }, []);
+
+  /**
+   * A refusal from any auth route. Returns true when it was the "we are not at
+   * your school yet" kind, which every caller renders instead of an error.
+   */
+  const handleRejection = useCallback(
+    (body: { reason?: string; school?: { id: string } }): boolean => {
+      if (body.reason !== "school_not_live") return false;
+      const school = getSchool(body.school?.id ?? null);
+      if (!school) return false;
+      setWaitlisted(school);
+      setError(null);
+      return true;
+    },
+    [],
+  );
 
   /** Saves the pasted schedule, then lands the user on /home. */
   const finish = useCallback(async () => {
@@ -97,10 +122,12 @@ export function SignInFlow({
         error?: string;
         mode?: string;
         reason?: string;
+        school?: { id: string };
         retryAfterMinutes?: number;
       };
       if (!response.ok) {
         setBusy(false);
+        if (handleRejection(body)) return "error";
         if (body.reason === "at_capacity") {
           setRetryMinutes(body.retryAfterMinutes ?? null);
           setError(capacityLine(body.retryAfterMinutes));
@@ -117,7 +144,7 @@ export function SignInFlow({
       setBusy(false);
       return "error";
     }
-  }, []);
+  }, [handleRejection]);
 
   /**
    * Coming back from Waterloo with a session already made. The pasted schedule
@@ -167,10 +194,13 @@ export function SignInFlow({
         options?: Parameters<typeof startRegistration>[0]["optionsJSON"];
         userId?: string;
         error?: string;
+        reason?: string;
+        school?: { id: string };
       };
       if (!optionsRes.ok || !optionsBody.options) {
-        setError(optionsBody.error ?? "That didn't work. Try a code instead.");
         setBusy(false);
+        if (handleRejection(optionsBody)) return;
+        setError(optionsBody.error ?? "That didn't work. Try a code instead.");
         return;
       }
 
@@ -203,7 +233,7 @@ export function SignInFlow({
       setError(null);
       setBusy(false);
     }
-  }, [email, finish]);
+  }, [email, finish, handleRejection]);
 
   /** Sign in with a passkey already on this device. No address needed. */
   const passkeySignIn = useCallback(async () => {
@@ -271,10 +301,13 @@ export function SignInFlow({
         const body = (await response.json().catch(() => ({}))) as {
           error?: string;
           needsProfile?: boolean;
+          reason?: string;
+          school?: { id: string };
         };
         if (!response.ok) {
-          setError(body.error ?? "That didn't work. Try again.");
           setBusy(false);
+          if (handleRejection(body)) return;
+          setError(body.error ?? "That didn't work. Try again.");
           return;
         }
         if (body.needsProfile) {
@@ -289,7 +322,7 @@ export function SignInFlow({
         setBusy(false);
       }
     },
-    [email, pin, finish],
+    [email, pin, finish, handleRejection],
   );
 
 
@@ -390,9 +423,16 @@ export function SignInFlow({
             <p className="text-[15px] text-[var(--ink-soft)]">
               {hasPending
                 ? "Your schedule is ready to save. This takes about twenty seconds."
-                : "Honk is Waterloo-only, so it needs your school address."}
+                : "Honk needs your school address — it is what puts you in the right classes."}
             </p>
           </div>
+
+          {/*
+            Replaces the error line, not the form. Somebody at a school that is
+            not live yet has done nothing wrong and is one click from leaving,
+            so what they get is the offer rather than a refusal.
+          */}
+          {waitlisted && <BringHonkHere school={waitlisted} />}
 
           {entraEnabled && (
             <>
@@ -416,7 +456,7 @@ export function SignInFlow({
 
           <div className="space-y-2">
             <label htmlFor="email" className="section-label">
-              Waterloo email
+              School email
             </label>
             <input
               id="email"
@@ -426,10 +466,20 @@ export function SignInFlow({
               autoFocus
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                // The offer was for the address they have since changed.
+                if (waitlisted) setWaitlisted(null);
+              }}
               placeholder="jdoe@uwaterloo.ca"
               className="field mono text-[15px]"
             />
+            <p className="text-[13px] leading-relaxed text-[var(--ink-faint)]">
+              {liveSchoolList()}.{" "}
+              <Link href="/universities" className="underline-offset-2 hover:underline">
+                Somewhere else?
+              </Link>
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -451,7 +501,7 @@ export function SignInFlow({
             />
             <p className="text-[13px] leading-relaxed text-[var(--ink-faint)]">
               Five digits, just for Honk. Deliberately not a password, so there is nothing
-              to accidentally reuse from WatIAM.
+              to accidentally reuse from your school account.
             </p>
           </div>
 

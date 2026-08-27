@@ -1,5 +1,61 @@
 # Changelog
 
+## Five universities, and friends between them
+
+Honk was Waterloo-only by design — `SPEC.md` §2 listed other campuses as out of
+scope. That is now reversed on purpose, and §9 of the spec explains why rather
+than quietly dropping the line.
+
+**Live: Waterloo, York, Guelph-Humber, McMaster, Brock.** Everywhere else in
+Canada is a real entry in the registry that gets recognised at sign-in and
+offered the beta, rather than an address that "isn't valid".
+
+What changed, in the order it matters:
+
+- **`lib/schools.ts`** — the registry. Name, domains, time zone, portal, parser.
+  Five live, 51 waiting. No database table: turning a school on always means
+  teaching the parser a format, which is a code change anyway.
+- **A second parser.** McMaster's Mosaic is PeopleSoft, the same product as
+  Quest, so it reuses the existing state machine and was nearly free. York,
+  Brock and Guelph-Humber are three different systems, so
+  `schedule/parsers/generic.ts` finds course codes and day/time runs anywhere in
+  the text instead of expecting a table. Both parsers run on every paste and the
+  better reading wins.
+- **School-scoped courses and sections.** `ECON 1000` at York and at
+  Guelph-Humber are different rows. Section identity moved from Quest's class
+  number to `(school_id, term_code, section_key)`, because only PeopleSoft
+  prints a class number.
+- **Cross-campus friends.** Shared classes stay within a school — structurally,
+  not by a check. Friend requests, profiles and shared free time cross freely,
+  which is the point: the friends you stop bumping into are the ones at another
+  university.
+- **Time-zone-correct gaps.** A friend's week is shifted into the viewer's zone
+  before any intersection. Zero for every live school today; correct for the
+  first one that is not.
+- **`/universities`** — the beta page, and the sign-in card that appears when
+  somebody types an address at a school Honk knows and has not launched at.
+- **`PAID.md`** — where the free tiers actually break, and what a real domain
+  changes. The passkey answer there is the one to read before buying a domain.
+
+### The part to be honest about
+
+The Quest parser has seen a real paste. **The other four portals have not.**
+Their fixtures are reconstructed from each portal's own documentation, which is
+exactly the position the Quest parser was in before somebody pasted into it, and
+that went about as well as it sounds. The tolerant parser is built to degrade
+rather than fail — a missed room is a null, not a crash — and the review screen
+shows the user what was read before anything saves. But the first real York
+paste will find something, and `/universities` exists to go and get one.
+
+### One manual step
+
+`scripts/migrate-schools.sql` has to be run against the live database before
+this deploys. `db:push` cannot do it alone: two new NOT NULL columns need values
+computed from existing rows. It is idempotent, and every existing row keeps the
+section identity it already had.
+
+---
+
 ## The starting point was not what the brief described
 
 The build brief lists nine files as "built, tested, and correct — do not
