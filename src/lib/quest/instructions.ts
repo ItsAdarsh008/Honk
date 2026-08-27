@@ -41,26 +41,31 @@ export interface PlatformSignals {
  * Which instructions to show.
  *
  * The question is not "is this a small screen" but "is there a keyboard to
- * press ⌘A on". Three signals, because no one of them is enough:
+ * press ⌘A on", and the signals disagree about that more than you would hope.
+ * Pointer media queries turned out to be the unreliable one: headless Chrome
+ * reports a coarse primary pointer and ten touch points for a 1280px desktop
+ * viewport, and a Windows laptop with a touchscreen reports coarse while
+ * sitting in front of a keyboard. So the user-agent decides, and the pointer
+ * is only consulted when it has nothing to say.
  *
- *  - A phone or tablet user-agent is decisive. Unfashionable, and still the
- *    most reliable thing available for the case that matters most.
- *  - Otherwise a coarse primary pointer *with no fine pointer anywhere* means
- *    fingers only. The second half is what keeps a touchscreen laptop on the
- *    desktop steps: it reports a coarse pointer and has a keyboard regardless.
- *  - Failing both, desktop, split by user-agent only to name the modifier key.
+ * Order matters. iPadOS 13+ sends a desktop Macintosh user-agent, so it has to
+ * be caught before the desktop rule claims it.
  */
 export function platformFrom(signals: PlatformSignals): Platform {
   const ua = signals.userAgent;
-  const mobileUa = /iPhone|iPod|Android.*Mobile|Windows Phone/i.test(ua);
-  const tabletUa = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
-  // iPadOS 13+ reports a desktop Mac user-agent; touch with no mouse gives it away.
-  const desktopClaimingTouch =
-    /Macintosh/.test(ua) && signals.primaryPointerCoarse && !signals.anyPointerFine;
+  const fingersOnly = signals.primaryPointerCoarse && !signals.anyPointerFine;
 
-  if (mobileUa || tabletUa || desktopClaimingTouch) return "touch";
-  if (signals.primaryPointerCoarse && !signals.anyPointerFine) return "touch";
-  return /Mac|iPhone|iPad|iPod/.test(ua) ? "mac" : "windows";
+  if (/iPhone|iPod|Android.*Mobile|Windows Phone/i.test(ua)) return "touch";
+  if (/iPad|Android(?!.*Mobile)|Tablet|Silk/i.test(ua)) return "touch";
+  // An iPad claiming to be a Mac: the absent mouse is the only tell.
+  if (/Macintosh/.test(ua) && fingersOnly) return "touch";
+
+  if (/Macintosh|Mac OS X/.test(ua)) return "mac";
+  if (/Windows NT|X11|Linux|CrOS/.test(ua)) return "windows";
+
+  // Unrecognised user-agent: now the pointer is the best thing available.
+  if (fingersOnly) return "touch";
+  return "windows";
 }
 
 /** Reads the signals from the browser. Only called after mount. */

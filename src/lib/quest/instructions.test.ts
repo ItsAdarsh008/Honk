@@ -90,3 +90,25 @@ describe("platformFrom", () => {
     ).toBe("windows");
   });
 });
+
+describe("platformFrom, when the pointer signals lie", () => {
+  // Both of these report a coarse primary pointer and no fine pointer, which is
+  // what a phone looks like. Neither is one.
+  const looksLikeAPhone = { primaryPointerCoarse: true, anyPointerFine: false };
+
+  it("trusts a desktop user-agent over the pointer", () => {
+    expect(platformFrom({ userAgent: UA.windows, ...looksLikeAPhone })).toBe("windows");
+    expect(platformFrom({ userAgent: UA.mac, ...looksLikeAPhone })).toBe("touch");
+  });
+
+  it("still catches a real phone when the pointer agrees", () => {
+    expect(platformFrom({ userAgent: UA.iphone, ...looksLikeAPhone })).toBe("touch");
+  });
+
+  it("reads Linux and ChromeOS as desktops", () => {
+    const linux = "Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0 Safari/537.36";
+    const cros = "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) Chrome/126.0 Safari/537.36";
+    expect(platformFrom({ userAgent: linux, ...looksLikeAPhone })).toBe("windows");
+    expect(platformFrom({ userAgent: cros, ...looksLikeAPhone })).toBe("windows");
+  });
+});
