@@ -401,3 +401,92 @@ export async function getUserById(id: string, db: Db = getDb()): Promise<User | 
   const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return user ?? null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Passwords
+ * ------------------------------------------------------------------ */
+
+/** Failures before a pause. High enough that a typo never trips it. */
+export const MAX_FAILED_LOGINS = 10;
+const LOCKOUT_MINUTES = 15;
+
+export type PasswordSignUp =
+  | { ok: true; user: User }
+  | { ok: false; reason: "taken" };
+
+/**
+ * Create an account from an address and a password.
+ *
+ * `verifiedAt` is set for the same reason the passkey path sets it: every
+ * social read gates on it, so an account without it is invisible and the
+ * classmates feature does not work. It records that signup finished, not that
+ * the address was proved — nothing proves that while codes are switched off.
+ *
+ * An address that already has a password is refused rather than overwritten.
+ * Silently replacing it would mean anybody could take over any account by
+ * signing up again with the same address.
+ */
+export async function createPasswordUser(
+  email: string,
+  passwordHash: string,
+  db: Db = getDb(),
+): Promise<PasswordSignUp> {
+  const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+  if (existing?.passwordHash) return { ok: false, reason: "taken" };
+
+  if (existing) {
+    // Claimed by a passkey but never given a password: adding one is fine, and
+    // it is how somebody adds a second way in.
+    const [updated] = await db
+      .update(users)
+      .set({ passwordHash, verifiedAt: existing.verifiedAt ?? new Date() })
+      .where(eq(users.id, existing.id))
+      .returning();
+    return { ok: true, user: updated };
+  }
+
+  const [created] = await db
+    .insert(users)
+    .values({ email, passwordHash, verifiedAt: new Date() })
+    .returning();
+  return { ok: true, user: created };
+}
+
+export type PasswordSignIn =
+  | { ok: true; user: User }
+  | { ok: false; reason: "wrong" | "locked"; retryAfterMinutes?: number };
+
+/** The account for an address, for the sign-in route to check a password against. */
+export async function findUserForSignIn(email: string, db: Db = getDb()): Promise<User | null> {
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return user ?? null;
+}
+
+export function lockoutRemaining(user: User, now: Date = new Date()): number | null {
+  if (!user.lockedUntil) return null;
+  const minutes = Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 60_000);
+  return minutes > 0 ? minutes : null;
+}
+
+/** A wrong password. Counts up, and locks the account once the count is hit. */
+export async function recordFailedLogin(user: User, db: Db = getDb()): Promise<void> {
+  const failed = user.failedLogins + 1;
+  await db
+    .update(users)
+    .set({
+      failedLogins: failed,
+      lockedUntil:
+        failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null,
+    })
+    .where(eq(users.id, user.id));
+}
+
+/** A correct password. Clears the brake so a bad week does not accumulate. */
+export async function clearFailedLogins(user: User, db: Db = getDb()): Promise<void> {
+  if (user.failedLogins === 0 && user.lockedUntil === null) return;
+  await db
+    .update(users)
+    .set({ failedLogins: 0, lockedUntil: null })
+    .where(eq(users.id, user.id));
+}

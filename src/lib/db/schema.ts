@@ -40,6 +40,16 @@ export const users = pgTable(
      * Null for accounts that only ever used an email code.
      */
     entraOid: text("entra_oid"),
+    /**
+     * scrypt, salted per user. Null for an account that only uses a passkey.
+     * See `auth/password.ts` for the format and why scrypt rather than a
+     * dependency.
+     */
+    passwordHash: text("password_hash"),
+    /** Consecutive failed sign-ins, reset on success. Brute-force brake. */
+    failedLogins: integer("failed_logins").notNull().default(0),
+    /** Set once `failedLogins` crosses the limit; sign-in refuses until then. */
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

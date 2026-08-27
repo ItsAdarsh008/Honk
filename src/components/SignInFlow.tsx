@@ -46,6 +46,7 @@ export function SignInFlow({
 
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -248,6 +249,50 @@ export function SignInFlow({
     }
   }, [finish]);
 
+
+  /**
+   * One call for both signing up and signing in.
+   *
+   * The screen does not ask which, because somebody typing their address does
+   * not remember whether they made an account here. The server knows, and says
+   * so in `mode`.
+   */
+  const submitPassword = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/auth/password", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          needsProfile?: boolean;
+        };
+        if (!response.ok) {
+          setError(body.error ?? "That didn't work. Try again.");
+          setBusy(false);
+          return;
+        }
+        if (body.needsProfile) {
+          setStep("profile");
+          setBusy(false);
+          requestAnimationFrame(() => nameRef.current?.focus());
+          return;
+        }
+        await finish();
+      } catch {
+        setError("That didn't work. Check your connection and try again.");
+        setBusy(false);
+      }
+    },
+    [email, password, finish],
+  );
+
+
   /**
    * Passkey by default. The email-code path is kept whole and switched off
    * rather than deleted: it is the only way back in if a device is lost, and
@@ -260,9 +305,9 @@ export function SignInFlow({
         await sendCode();
         return;
       }
-      await passkeyRegister();
+      await submitPassword(event);
     },
-    [emailCodesEnabled, sendCode, passkeyRegister],
+    [emailCodesEnabled, sendCode, submitPassword],
   );
 
   const submitCode = useCallback(
@@ -387,30 +432,70 @@ export function SignInFlow({
             />
           </div>
 
+          <div className="space-y-2">
+            <label htmlFor="password" className="section-label">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              // Lets a manager fill either half correctly, and stops a browser
+              // offering the wrong saved password on the sign-in half.
+              autoComplete="current-password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              className="field text-[15px]"
+            />
+            <p className="text-[13px] text-[var(--ink-faint)]">
+              Eight characters or more. No capitals, digits or symbols demanded — length is
+              the only thing that helps.
+            </p>
+          </div>
+
           <ErrorText error={error} />
 
           <div className="space-y-2.5">
             <button
               type="submit"
               className="btn btn-primary w-full"
-              disabled={busy || !email.trim()}
+              disabled={busy || !email.trim() || !password}
             >
-              {busy ? "Working…" : "Create a passkey"}
+              {busy ? "Working…" : "Continue"}
             </button>
             <p className="text-[13px] leading-relaxed text-[var(--ink-faint)]">
-              Face ID, a fingerprint, or your screen lock. Nothing to remember, nothing to
-              wait for in an inbox.
+              New here or coming back — same button either way.
             </p>
           </div>
 
-          <button
-            type="button"
-            className="w-full text-[14px] text-[var(--ink-soft)] underline-offset-2 hover:underline"
-            onClick={() => void passkeySignIn()}
-            disabled={busy}
-          >
-            Already have a passkey? Sign in
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="h-px flex-1 bg-[var(--border)]" />
+            <span className="mono text-[11px] uppercase tracking-[0.08em] text-[var(--ink-faint)]">
+              or
+            </span>
+            <span className="h-px flex-1 bg-[var(--border)]" />
+          </div>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="btn btn-quiet w-full"
+              onClick={() => void passkeyRegister()}
+              disabled={busy || !email.trim()}
+            >
+              Use a passkey instead
+            </button>
+            <button
+              type="button"
+              className="w-full text-[14px] text-[var(--ink-soft)] underline-offset-2 hover:underline"
+              onClick={() => void passkeySignIn()}
+              disabled={busy}
+            >
+              Sign in with a passkey I already have
+            </button>
+          </div>
 
 
         </form>
