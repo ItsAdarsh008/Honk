@@ -11,6 +11,7 @@ import { cookies } from "next/headers";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb, type Db } from "../db";
 import { loginCodes, sessions, users, type User } from "../db/schema";
+import { lockoutMinutes } from "./pin";
 
 export const SESSION_COOKIE = "honk_session";
 /**
@@ -406,11 +407,7 @@ export async function getUserById(id: string, db: Db = getDb()): Promise<User | 
  * Passwords
  * ------------------------------------------------------------------ */
 
-/** Failures before a pause. High enough that a typo never trips it. */
-export const MAX_FAILED_LOGINS = 10;
-const LOCKOUT_MINUTES = 15;
-
-export type PasswordSignUp =
+export type PinSignUp =
   | { ok: true; user: User }
   | { ok: false; reason: "taken" };
 
@@ -426,21 +423,21 @@ export type PasswordSignUp =
  * Silently replacing it would mean anybody could take over any account by
  * signing up again with the same address.
  */
-export async function createPasswordUser(
+export async function createPinUser(
   email: string,
-  passwordHash: string,
+  pinHash: string,
   db: Db = getDb(),
-): Promise<PasswordSignUp> {
+): Promise<PinSignUp> {
   const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
-  if (existing?.passwordHash) return { ok: false, reason: "taken" };
+  if (existing?.pinHash) return { ok: false, reason: "taken" };
 
   if (existing) {
     // Claimed by a passkey but never given a password: adding one is fine, and
     // it is how somebody adds a second way in.
     const [updated] = await db
       .update(users)
-      .set({ passwordHash, verifiedAt: existing.verifiedAt ?? new Date() })
+      .set({ pinHash, verifiedAt: existing.verifiedAt ?? new Date() })
       .where(eq(users.id, existing.id))
       .returning();
     return { ok: true, user: updated };
@@ -448,12 +445,12 @@ export async function createPasswordUser(
 
   const [created] = await db
     .insert(users)
-    .values({ email, passwordHash, verifiedAt: new Date() })
+    .values({ email, pinHash, verifiedAt: new Date() })
     .returning();
   return { ok: true, user: created };
 }
 
-export type PasswordSignIn =
+export type PinSignIn =
   | { ok: true; user: User }
   | { ok: false; reason: "wrong" | "locked"; retryAfterMinutes?: number };
 
@@ -469,20 +466,20 @@ export function lockoutRemaining(user: User, now: Date = new Date()): number | n
   return minutes > 0 ? minutes : null;
 }
 
-/** A wrong password. Counts up, and locks the account once the count is hit. */
+/** A wrong PIN. The lockout lengthens with the run, so patience costs time. */
 export async function recordFailedLogin(user: User, db: Db = getDb()): Promise<void> {
   const failed = user.failedLogins + 1;
+  const minutes = lockoutMinutes(failed);
   await db
     .update(users)
     .set({
       failedLogins: failed,
-      lockedUntil:
-        failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null,
+      lockedUntil: minutes === null ? null : new Date(Date.now() + minutes * 60_000),
     })
     .where(eq(users.id, user.id));
 }
 
-/** A correct password. Clears the brake so a bad week does not accumulate. */
+/** A correct PIN. Clears the brake so a bad week does not accumulate. */
 export async function clearFailedLogins(user: User, db: Db = getDb()): Promise<void> {
   if (user.failedLogins === 0 && user.lockedUntil === null) return;
   await db

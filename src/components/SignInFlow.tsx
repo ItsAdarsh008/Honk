@@ -46,7 +46,7 @@ export function SignInFlow({
 
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -257,16 +257,16 @@ export function SignInFlow({
    * not remember whether they made an account here. The server knows, and says
    * so in `mode`.
    */
-  const submitPassword = useCallback(
+  const submitPin = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
       setBusy(true);
       setError(null);
       try {
-        const response = await fetch("/api/auth/password", {
+        const response = await fetch("/api/auth/pin", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, pin }),
         });
         const body = (await response.json().catch(() => ({}))) as {
           error?: string;
@@ -289,7 +289,7 @@ export function SignInFlow({
         setBusy(false);
       }
     },
-    [email, password, finish],
+    [email, pin, finish],
   );
 
 
@@ -305,9 +305,9 @@ export function SignInFlow({
         await sendCode();
         return;
       }
-      await submitPassword(event);
+      await submitPin(event);
     },
-    [emailCodesEnabled, sendCode, submitPassword],
+    [emailCodesEnabled, sendCode, submitPin],
   );
 
   const submitCode = useCallback(
@@ -433,25 +433,25 @@ export function SignInFlow({
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="password" className="section-label">
-              Password
+            <label htmlFor="pin" className="section-label">
+              5-digit PIN
             </label>
             <input
-              id="password"
-              type="password"
-              // Lets a manager fill either half correctly, and stops a browser
-              // offering the wrong saved password on the sign-in half.
-              autoComplete="current-password"
+              id="pin"
+              inputMode="numeric"
+              // Not "current-password": a manager offering a saved website
+              // password here is the exact confusion this PIN exists to avoid.
+              autoComplete="off"
               required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              className="field text-[15px]"
+              maxLength={5}
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 5))}
+              placeholder="00000"
+              className="field mono text-center text-[26px] tracking-[0.35em]"
             />
-            <p className="text-[13px] text-[var(--ink-faint)]">
-              Eight characters or more. No capitals, digits or symbols demanded — length is
-              the only thing that helps.
+            <p className="text-[13px] leading-relaxed text-[var(--ink-faint)]">
+              Five digits, just for Honk. Deliberately not a password, so there is nothing
+              to accidentally reuse from WatIAM.
             </p>
           </div>
 
@@ -461,7 +461,7 @@ export function SignInFlow({
             <button
               type="submit"
               className="btn btn-primary w-full"
-              disabled={busy || !email.trim() || !password}
+              disabled={busy || !email.trim() || pin.length !== 5}
             >
               {busy ? "Working…" : "Continue"}
             </button>

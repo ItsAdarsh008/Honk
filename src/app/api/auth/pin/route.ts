@@ -1,13 +1,8 @@
 import { fail, json, readJson, requireDatabase } from "@/app/api/_lib";
-import {
-  checkPassword,
-  hashPassword,
-  PASSWORD_MESSAGES,
-  verifyPassword,
-} from "@/lib/auth/password";
+import { checkPin, hashPin, PIN_MESSAGES, verifyPin } from "@/lib/auth/pin";
 import {
   clearFailedLogins,
-  createPasswordUser,
+  createPinUser,
   createSession,
   findUserForSignIn,
   hasProfile,
@@ -19,22 +14,22 @@ import {
 export const runtime = "nodejs";
 
 /**
- * Sign up or sign in with an address and a password.
+ * Sign up or sign in with an address and a five-digit PIN.
  *
  * One route for both, because the client cannot know which it is: somebody
  * typing their address does not remember whether they made an account. `mode`
- * says what happened so the screen can say "welcome back" or ask for a name.
+ * says what happened so the screen can ask for a name or not.
  *
- * A wrong password and an address with no account say the same thing, so this
+ * A wrong PIN and an address with no account say the same thing, so this
  * cannot be used to find out who has signed up.
  */
 export async function POST(request: Request) {
   const unavailable = requireDatabase();
   if (unavailable) return unavailable;
 
-  const body = await readJson<{ email?: string; password?: string }>(request);
+  const body = await readJson<{ email?: string; pin?: string }>(request);
   const email = normalizeEmail(body?.email ?? "");
-  const password = body?.password ?? "";
+  const pin = body?.pin ?? "";
 
   if (!email) {
     return fail("Honk is Waterloo-only, so this needs to be a @uwaterloo.ca address.");
@@ -42,18 +37,20 @@ export async function POST(request: Request) {
 
   const existing = await findUserForSignIn(email);
 
-  if (existing?.passwordHash) {
+  if (existing?.pinHash) {
     const locked = lockoutRemaining(existing);
     if (locked !== null) {
       return fail(
-        `Too many wrong tries. Try again in ${locked} ${locked === 1 ? "minute" : "minutes"}.`,
+        locked >= 60
+          ? `Too many wrong tries. Try again in about ${Math.round(locked / 60)} ${Math.round(locked / 60) === 1 ? "hour" : "hours"}.`
+          : `Too many wrong tries. Try again in ${locked} ${locked === 1 ? "minute" : "minutes"}.`,
         429,
       );
     }
 
-    if (!(await verifyPassword(password, existing.passwordHash))) {
+    if (!(await verifyPin(pin, existing.pinHash))) {
       await recordFailedLogin(existing);
-      return fail("That email and password don't match.", 401);
+      return fail("That email and PIN don't match.", 401);
     }
 
     await clearFailedLogins(existing);
@@ -61,12 +58,12 @@ export async function POST(request: Request) {
     return json({ ok: true, mode: "signin", needsProfile: !hasProfile(existing) });
   }
 
-  // No password on file: this is a signup, so the rules apply now.
-  const problem = checkPassword(password);
-  if (problem) return fail(PASSWORD_MESSAGES[problem]);
+  // No PIN on file: this is a signup, so the rules apply now.
+  const problem = checkPin(pin);
+  if (problem) return fail(PIN_MESSAGES[problem]);
 
-  const created = await createPasswordUser(email, await hashPassword(password));
-  if (!created.ok) return fail("That email and password don't match.", 401);
+  const created = await createPinUser(email, await hashPin(pin));
+  if (!created.ok) return fail("That email and PIN don't match.", 401);
 
   await createSession(created.user.id);
   return json({ ok: true, mode: "signup", needsProfile: !hasProfile(created.user) });

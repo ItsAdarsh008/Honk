@@ -41,11 +41,11 @@ export const users = pgTable(
      */
     entraOid: text("entra_oid"),
     /**
-     * scrypt, salted per user. Null for an account that only uses a passkey.
-     * See `auth/password.ts` for the format and why scrypt rather than a
-     * dependency.
+     * scrypt of the five-digit PIN, salted per user. Null for an account that
+     * only uses a passkey. See `auth/pin.ts` for the format, and for why five
+     * digits is the right trade here despite being a small space.
      */
-    passwordHash: text("password_hash"),
+    pinHash: text("pin_hash"),
     /** Consecutive failed sign-ins, reset on success. Brute-force brake. */
     failedLogins: integer("failed_logins").notNull().default(0),
     /** Set once `failedLogins` crosses the limit; sign-in refuses until then. */
