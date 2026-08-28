@@ -22,7 +22,7 @@ import { savePending, clearPending } from "@/lib/pending";
 import { termName } from "@/lib/time";
 import { isHandheld } from "@/lib/device";
 import { assignCourseColors } from "@/lib/colors";
-import { DEFAULT_SCHOOL_ID, schoolOrDefault } from "@/lib/schools";
+import { DEFAULT_SCHOOL_ID, LAPTOP_ONLY_NOTE, schoolOrDefault } from "@/lib/schools";
 import { readSchoolChoice, saveSchoolChoice } from "@/lib/school-choice";
 import { ScheduleGrid, type GridMeeting } from "./ScheduleGrid";
 import { CourseList } from "./CourseList";
@@ -173,6 +173,13 @@ export function PasteFlow({ signedIn, schoolId = null }: Props) {
 
       <div id="paste-help" className="mt-6">
         <p className="section-label">How to get it</p>
+        {/*
+          Always shown, not only when a phone is detected. Somebody reading
+          this on a laptop while their phone is in their hand still needs to
+          know which one to use, and the detection card below only fires for
+          the people who have already made the wrong choice.
+        */}
+        <p className="mt-2 text-[13px] text-[var(--ink-faint)]">{LAPTOP_ONLY_NOTE}</p>
         <ol className="mt-3 space-y-2.5">
           {(school.guide?.steps ?? []).map((step, i) => (
             <li key={step} className="flex gap-3 text-[15px] text-[var(--ink-soft)]">
