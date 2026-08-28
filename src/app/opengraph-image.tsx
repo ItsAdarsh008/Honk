@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { GooseMark } from "@/components/GooseMark";
 import { GOOSE_LIGHT } from "@/lib/goose";
-import { liveSchoolList } from "@/lib/schools";
+import { liveSchoolCount } from "@/lib/schools";
 
 /**
  * The link preview. This is how Honk actually spreads — pasted into iMessage
@@ -66,7 +66,7 @@ export default function OpengraphImage() {
             fifths of the people receiving one that the app was not for them.
           */}
           <span style={{ marginTop: 28, fontSize: 27, color: "#75726A" }}>
-            {liveSchoolList()}
+            {liveSchoolCount()} Canadian universities
           </span>
         </div>
 

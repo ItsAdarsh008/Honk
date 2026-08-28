@@ -1,6 +1,6 @@
 import "server-only";
 import { siteUrl } from "../site";
-import { liveSchoolList } from "../schools";
+import { liveSchoolSummary } from "../schools";
 import { formatWait } from "../wait";
 import { CODE_TTL_MINUTES } from "./session";
 
@@ -124,7 +124,7 @@ function codeEmailText(code: string, site: string, host: string): string {
     `It expires in ${lifetime()} and works once.`,
     "",
     "You are getting this because someone entered this address on Honk, the",
-    `class-schedule app for students at ${liveSchoolList()}. If that was`,
+    `class-schedule app for students at ${liveSchoolSummary()}. If that was`,
     "not you, ignore this email — no account is created and nothing changes.",
     "",
     `Honk · ${host}`,
@@ -146,7 +146,7 @@ function codeEmailHtml(code: string, site: string, host: string): string {
           </p>
           <p style="margin:0;font-size:14px;line-height:1.5;color:#75726A;">
             You are getting this because someone entered this address on Honk, the
-            class-schedule app for students at ${liveSchoolList()}. If that was not you,
+            class-schedule app for students at ${liveSchoolSummary()}. If that was not you,
             ignore this email — no account is created and nothing changes.
           </p>
         </td>

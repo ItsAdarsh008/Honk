@@ -16,7 +16,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { formatWait } from "@/lib/wait";
 import {
   getSchool,
-  liveSchoolList,
+  liveSchoolSummary,
   parseSchoolAddress,
   type School,
 } from "@/lib/schools";
@@ -496,7 +496,7 @@ export function SignInFlow({
               className="field mono text-[15px]"
             />
             <p className="text-[13px] leading-relaxed text-[var(--ink-faint)]">
-              {liveSchoolList()}.{" "}
+              {liveSchoolSummary()}.{" "}
               <Link href="/universities" className="underline-offset-2 hover:underline">
                 Somewhere else?
               </Link>

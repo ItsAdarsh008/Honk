@@ -20,6 +20,8 @@
  * Step 4 is the one that matters. Everything else is typing.
  */
 
+import { isOutOfBeta } from "./schools-out-of-beta";
+
 export type SchoolStatus = "live" | "waitlist";
 
 /**
@@ -52,6 +54,14 @@ export interface School {
   province: string;
   status: SchoolStatus;
   /**
+   * True until somebody has proved Honk can read this school's portal.
+   *
+   * Computed, never written by hand — the switch is the list in
+   * `schools-out-of-beta.ts`, which is the one file to edit when a school
+   * graduates. See that file for what the bar actually is.
+   */
+  beta: boolean;
+  /**
    * Root email domains. An address matches when its domain is one of these or
    * a subdomain of one, so `@my.yorku.ca`, `@mail.utoronto.ca` and
    * `@edu.uwaterloo.ca` all land on the right school without listing every
@@ -74,12 +84,16 @@ export interface School {
  * Live schools, in the order they were switched on.
  *
  * Waterloo first because that is where Honk was built and where the parser has
- * seen real pastes. The other four are the frosh-week expansion: all Ontario,
- * all within an hour or two of each other, which matters more than it sounds —
- * cross-campus friends are only interesting when the two campuses are close
- * enough that "we are both free Thursday afternoon" leads anywhere.
+ * actually seen real pastes. Everything after it is inferred from its portal's
+ * documentation and carries a beta tag until a real paste says otherwise —
+ * which is what `schools-out-of-beta.ts` is for.
+ *
+ * Ontario-heavy on purpose: cross-campus friends are only interesting when the
+ * two campuses are close enough that "we are both free Thursday afternoon"
+ * leads somewhere. UBC is the exception and earns its place differently — it
+ * is where a Waterloo student's friends go when they go far.
  */
-const LIVE: School[] = [
+const LIVE: Array<Omit<School, "beta">> = [
   {
     id: "waterloo",
     name: "University of Waterloo",
@@ -97,6 +111,131 @@ const LIVE: School[] = [
         "Switch to List View.",
         "Select the whole page and copy it, then paste it above.",
       ],
+    },
+  },
+  {
+    id: "laurier",
+    name: "Wilfrid Laurier University",
+    short: "Laurier",
+    province: "ON",
+    status: "live",
+    // Students are issued @mylaurier.ca; staff and alumni keep @wlu.ca.
+    domains: ["mylaurier.ca", "wlu.ca"],
+    canonicalDomain: "mylaurier.ca",
+    timezone: "America/Toronto",
+    parser: "generic",
+    guide: {
+      portal: "LORIS",
+      steps: [
+        "Sign in to LORIS from the Laurier portal.",
+        "Open Student Services → Registration → Student Detail Schedule.",
+        "Select the whole page and copy it, then paste it above.",
+      ],
+      note: "Laurier and Waterloo share a term, so a double-degree schedule from both pastes fine — do them one after the other.",
+    },
+  },
+  {
+    id: "toronto",
+    name: "University of Toronto",
+    short: "Toronto",
+    province: "ON",
+    status: "live",
+    domains: ["utoronto.ca"],
+    canonicalDomain: "utoronto.ca",
+    timezone: "America/Toronto",
+    parser: "generic",
+    guide: {
+      portal: "ACORN",
+      steps: [
+        "Open ACORN and sign in with your UTORid.",
+        "Go to Academics → Timetable and pick the term.",
+        "Select the whole page and copy it, then paste it above.",
+      ],
+    },
+  },
+  {
+    id: "western",
+    name: "Western University",
+    short: "Western",
+    province: "ON",
+    status: "live",
+    domains: ["uwo.ca"],
+    canonicalDomain: "uwo.ca",
+    timezone: "America/Toronto",
+    // Western runs PeopleSoft, the same product as Quest and Mosaic.
+    parser: "peoplesoft",
+    guide: {
+      portal: "Student Center",
+      steps: [
+        "Sign in to Student Center from the Western portal.",
+        "Open My Academics → My Class Schedule and pick the term.",
+        "Switch to List View, select the whole page and copy it.",
+      ],
+    },
+  },
+  {
+    id: "mcmaster",
+    name: "McMaster University",
+    short: "McMaster",
+    province: "ON",
+    status: "live",
+    domains: ["mcmaster.ca"],
+    canonicalDomain: "mcmaster.ca",
+    timezone: "America/Toronto",
+    parser: "peoplesoft",
+    guide: {
+      portal: "Mosaic",
+      steps: [
+        "Open Mosaic and go to Student Center → Weekly Schedule.",
+        "Switch to List View.",
+        "Select the whole page and copy it, then paste it above.",
+      ],
+      note: "Mosaic and Quest are the same system underneath, so Honk reads this one well.",
+    },
+  },
+  {
+    id: "queens",
+    name: "Queen's University",
+    short: "Queen's",
+    province: "ON",
+    status: "live",
+    domains: ["queensu.ca"],
+    canonicalDomain: "queensu.ca",
+    timezone: "America/Toronto",
+    // SOLUS is PeopleSoft too, so it gets the parser with real pastes behind it.
+    parser: "peoplesoft",
+    guide: {
+      portal: "SOLUS",
+      steps: [
+        "Open SOLUS from the Queen's portal.",
+        "Go to Enrolment → My Class Schedule and pick the term.",
+        "Switch to List View, select the whole page and copy it.",
+      ],
+    },
+  },
+  {
+    id: "ubc",
+    name: "University of British Columbia",
+    short: "UBC",
+    province: "BC",
+    status: "live",
+    domains: ["ubc.ca"],
+    canonicalDomain: "ubc.ca",
+    /*
+     * The first school Honk runs at outside Eastern time, which turns the
+     * time-zone shift in `overlap/queries.ts` from dormant code into load-
+     * bearing code. A UBC student's 9am Monday is a Waterloo friend's noon.
+     */
+    timezone: "America/Vancouver",
+    parser: "generic",
+    guide: {
+      portal: "Workday",
+      steps: [
+        "Sign in to Workday and open the Academics app.",
+        "Go to Registration & Courses → View My Courses, or open your Schedule.",
+        "Select the whole page and copy it, then paste it above.",
+      ],
+      note: "Workday is unlike every other portal here, so this is the one most likely to need a fix. Send the paste if it comes out wrong.",
     },
   },
   {
@@ -139,26 +278,6 @@ const LIVE: School[] = [
     },
   },
   {
-    id: "mcmaster",
-    name: "McMaster University",
-    short: "McMaster",
-    province: "ON",
-    status: "live",
-    domains: ["mcmaster.ca"],
-    canonicalDomain: "mcmaster.ca",
-    timezone: "America/Toronto",
-    parser: "peoplesoft",
-    guide: {
-      portal: "Mosaic",
-      steps: [
-        "Open Mosaic and go to Student Center → Weekly Schedule.",
-        "Switch to List View.",
-        "Select the whole page and copy it, then paste it above.",
-      ],
-      note: "Mosaic and Quest are the same system underneath, so Honk reads this one well.",
-    },
-  },
-  {
     id: "brock",
     name: "Brock University",
     short: "Brock",
@@ -191,13 +310,11 @@ const LIVE: School[] = [
  * Only `domains` and the name are needed here. The guide and the parser get
  * written when somebody actually shows up with a paste.
  */
-const WAITLIST: Array<Omit<School, "status" | "parser" | "canonicalDomain" | "timezone"> & {
-  timezone?: string;
-}> = [
-  { id: "toronto", name: "University of Toronto", short: "Toronto", province: "ON", domains: ["utoronto.ca"] },
-  { id: "laurier", name: "Wilfrid Laurier University", short: "Laurier", province: "ON", domains: ["mylaurier.ca", "wlu.ca"] },
-  { id: "western", name: "Western University", short: "Western", province: "ON", domains: ["uwo.ca"] },
-  { id: "queens", name: "Queen's University", short: "Queen's", province: "ON", domains: ["queensu.ca"] },
+const WAITLIST: Array<
+  Omit<School, "status" | "parser" | "canonicalDomain" | "timezone" | "beta"> & {
+    timezone?: string;
+  }
+> = [
   { id: "ottawa", name: "University of Ottawa", short: "Ottawa", province: "ON", domains: ["uottawa.ca"] },
   { id: "carleton", name: "Carleton University", short: "Carleton", province: "ON", domains: ["carleton.ca"] },
   { id: "tmu", name: "Toronto Metropolitan University", short: "TMU", province: "ON", domains: ["torontomu.ca", "ryerson.ca"] },
@@ -217,7 +334,6 @@ const WAITLIST: Array<Omit<School, "status" | "parser" | "canonicalDomain" | "ti
   { id: "sherbrooke", name: "Université de Sherbrooke", short: "Sherbrooke", province: "QC", domains: ["usherbrooke.ca"] },
   { id: "uqam", name: "Université du Québec à Montréal", short: "UQAM", province: "QC", domains: ["uqam.ca"] },
   { id: "bishops", name: "Bishop's University", short: "Bishop's", province: "QC", domains: ["ubishops.ca"] },
-  { id: "ubc", name: "University of British Columbia", short: "UBC", province: "BC", domains: ["ubc.ca"], timezone: "America/Vancouver" },
   { id: "sfu", name: "Simon Fraser University", short: "SFU", province: "BC", domains: ["sfu.ca"], timezone: "America/Vancouver" },
   { id: "uvic", name: "University of Victoria", short: "UVic", province: "BC", domains: ["uvic.ca"], timezone: "America/Vancouver" },
   { id: "unbc", name: "University of Northern British Columbia", short: "UNBC", province: "BC", domains: ["unbc.ca"], timezone: "America/Vancouver" },
@@ -257,7 +373,7 @@ const WAITLIST: Array<Omit<School, "status" | "parser" | "canonicalDomain" | "ti
  * and the parser is a guess until somebody proves it.
  */
 export const SCHOOLS: School[] = [
-  ...LIVE,
+  ...LIVE.map((s): School => ({ ...s, beta: !isOutOfBeta(s.id) })),
   ...WAITLIST.map(
     (s): School => ({
       ...s,
@@ -265,6 +381,8 @@ export const SCHOOLS: School[] = [
       canonicalDomain: s.domains[0],
       timezone: s.timezone ?? "America/Toronto",
       parser: "generic",
+      // A school nobody can sign in to yet is beta by definition.
+      beta: true,
     }),
   ),
 ];
@@ -345,11 +463,30 @@ export function parseSchoolAddress(raw: string): SchoolAddress | null {
  * Copy helpers
  * ------------------------------------------------------------------ */
 
-/** "Waterloo, York, Guelph-Humber, McMaster and Brock" — for one-line prose. */
+/** Every live school, spelled out. Only for places with room for all of them. */
 export function liveSchoolList(): string {
   const names = LIVE_SCHOOLS.map((s) => s.short);
   if (names.length <= 1) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+export function liveSchoolCount(): number {
+  return LIVE_SCHOOLS.length;
+}
+
+/**
+ * "Waterloo, Laurier, Toronto and 7 more" — for the places prose has to fit.
+ *
+ * The full list was fine at five schools and is a mouthful at ten. It is on
+ * the link-preview card, under the sign-in box and in the refusal an unknown
+ * address gets, none of which have room to name every campus in the country —
+ * and a reader stops parsing a list at about three anyway.
+ */
+export function liveSchoolSummary(max = 3): string {
+  const names = LIVE_SCHOOLS.map((s) => s.short);
+  if (names.length <= max + 1) return liveSchoolList();
+  const shown = names.slice(0, max).join(", ");
+  return `${shown} and ${names.length - max} more`;
 }
 
 /** Waitlist schools grouped by province, each group alphabetical. */

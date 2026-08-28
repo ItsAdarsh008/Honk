@@ -21,6 +21,7 @@ import {
   schoolOrDefault,
   waitlistByProvince,
 } from "./schools";
+import { OUT_OF_BETA } from "./schools-out-of-beta";
 
 describe("the registry", () => {
   it("has no duplicate ids", () => {
@@ -51,14 +52,40 @@ describe("the registry", () => {
     }
   });
 
-  it("launched at the five schools it says it has", () => {
+  it("launched at the schools it says it has, in the order it shows them", () => {
     expect(LIVE_SCHOOLS.map((s) => s.id)).toEqual([
       "waterloo",
+      "laurier",
+      "toronto",
+      "western",
+      "mcmaster",
+      "queens",
+      "ubc",
       "york",
       "guelphhumber",
-      "mcmaster",
       "brock",
     ]);
+  });
+
+  it("has everything but Waterloo in beta", () => {
+    // The switch is schools-out-of-beta.ts. If this fails, either a school
+    // earned its way out or somebody edited that file without meaning to.
+    const outOfBeta = SCHOOLS.filter((s) => !s.beta).map((s) => s.id);
+    expect(outOfBeta).toEqual(["waterloo"]);
+  });
+
+  it("only lets a live school be out of beta", () => {
+    // A waitlist school nobody can even sign in to must never read as proven.
+    for (const school of WAITLIST_SCHOOLS) {
+      expect(school.beta, `${school.id} is on the waitlist and not in beta`).toBe(true);
+    }
+  });
+
+  it("names an id that exists for every entry in the beta switch", () => {
+    // A typo in OUT_OF_BETA is silent: the tag simply does not disappear.
+    for (const id of OUT_OF_BETA) {
+      expect(getSchool(id), `${id} is in OUT_OF_BETA but is not a school`).not.toBeNull();
+    }
   });
 
   it("keeps every waitlist school out of the live list, and in a province", () => {
@@ -85,8 +112,8 @@ describe("addresses", () => {
   });
 
   it("names the school for an address Honk knows and has not launched at", () => {
-    const parsed = parseSchoolAddress("jdoe@queensu.ca");
-    expect(parsed?.school.short).toBe("Queen's");
+    const parsed = parseSchoolAddress("jdoe@dal.ca");
+    expect(parsed?.school.short).toBe("Dalhousie");
     expect(parsed?.school.status).toBe("waitlist");
   });
 
@@ -120,6 +147,8 @@ describe("lookups", () => {
   });
 
   it("writes the live list as a sentence", () => {
-    expect(liveSchoolList()).toBe("Waterloo, York, Guelph-Humber, McMaster and Brock");
+    expect(liveSchoolList()).toBe(
+      "Waterloo, Laurier, Toronto, Western, McMaster, Queen's, UBC, York, Guelph-Humber and Brock",
+    );
   });
 });

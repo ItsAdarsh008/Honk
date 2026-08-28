@@ -4,7 +4,7 @@ import { PasteFlow } from "@/components/PasteFlow";
 import { getOptionalUser } from "@/lib/auth/current";
 import { getCurrentTermCode } from "@/lib/overlap/queries";
 import { getVisibleUserCount } from "@/lib/stats";
-import { liveSchoolList } from "@/lib/schools";
+import { liveSchoolSummary } from "@/lib/schools";
 import { hasDatabase } from "@/lib/db";
 
 /**
@@ -37,7 +37,7 @@ export default async function LandingPage() {
         </p>
         <div className="space-y-1 text-[14px] text-[var(--ink-faint)]">
           <p>
-            {liveSchoolList()}.{" "}
+            {liveSchoolSummary()}.{" "}
             <Link href="/universities" className="underline-offset-2 hover:text-[var(--clay)] hover:underline">
               Not yours?
             </Link>{" "}
