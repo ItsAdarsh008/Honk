@@ -1,5 +1,102 @@
 # Changelog
 
+## Five universities, and friends between them
+
+Honk was Waterloo-only by design — `SPEC.md` §2 listed other campuses as out of
+scope. That is now reversed on purpose, and §9 of the spec explains why rather
+than quietly dropping the line.
+
+**Live: Waterloo, York, Guelph-Humber, McMaster, Brock.** Everywhere else in
+Canada is a real entry in the registry that gets recognised at sign-in and
+offered the beta, rather than an address that "isn't valid".
+
+What changed, in the order it matters:
+
+- **`lib/schools.ts`** — the registry. Name, domains, time zone, portal, parser.
+  Five live, 51 waiting. No database table: turning a school on always means
+  teaching the parser a format, which is a code change anyway.
+- **A second parser.** McMaster's Mosaic is PeopleSoft, the same product as
+  Quest, so it reuses the existing state machine and was nearly free. York,
+  Brock and Guelph-Humber are three different systems, so
+  `schedule/parsers/generic.ts` finds course codes and day/time runs anywhere in
+  the text instead of expecting a table. Both parsers run on every paste and the
+  better reading wins.
+- **School-scoped courses and sections.** `ECON 1000` at York and at
+  Guelph-Humber are different rows. Section identity moved from Quest's class
+  number to `(school_id, term_code, section_key)`, because only PeopleSoft
+  prints a class number.
+- **Cross-campus friends.** Shared classes stay within a school — structurally,
+  not by a check. Friend requests, profiles and shared free time cross freely,
+  which is the point: the friends you stop bumping into are the ones at another
+  university.
+- **Time-zone-correct gaps.** A friend's week is shifted into the viewer's zone
+  before any intersection. Zero for every live school today; correct for the
+  first one that is not.
+- **`/universities`** — the beta page, and the sign-in card that appears when
+  somebody types an address at a school Honk knows and has not launched at.
+- **`PAID.md`** — where the free tiers actually break, and what a real domain
+  changes. The passkey answer there is the one to read before buying a domain.
+
+### The part to be honest about
+
+The Quest parser has seen a real paste. **The other four portals have not.**
+Their fixtures are reconstructed from each portal's own documentation, which is
+exactly the position the Quest parser was in before somebody pasted into it, and
+that went about as well as it sounds. The tolerant parser is built to degrade
+rather than fail — a missed room is a null, not a crash — and the review screen
+shows the user what was read before anything saves. But the first real York
+paste will find something, and `/universities` exists to go and get one.
+
+### What a second university broke, and what is still open
+
+A pass over the assumptions that only hold at one school. Five fixed:
+
+- **Friends at another school showed as free all week.** `busyWeeksFor` filtered
+  every user by the *viewer's* term code and started everyone from an empty
+  week, so a friend whose term is coded differently matched no rows and came
+  back looking perfectly available, 8am to 10pm, every day. York's Fall/Winter
+  courses derive to the Fall code and stay there through January, so this was
+  routine rather than exotic. Everyone is now read at their own term, and
+  somebody with no schedule is left out of the results rather than invented as
+  free.
+- **The link-preview card said "University of Waterloo".** It is what every
+  invite link renders as in a DM — the one asset that reaches people who have
+  never seen Honk.
+- **The sign-in email called Honk "the class-schedule app for University of
+  Waterloo students"**, to whoever it was sent to. Dormant while codes are off.
+- **"Sign in with Waterloo" was the top button for everybody**, including the
+  four fifths of live schools it cannot work for.
+- **Unnumbered sections could merge two different lectures into one row.** The
+  generic parser defaulted a missing section code to `01`, and section rows are
+  shared, so two people in different rooms became each other's classmates —
+  which is what lets a friend see a room. An inferred code is now flagged and
+  keyed on its meeting pattern instead.
+
+Still open, and deliberately not changed:
+
+- **Handles are one global namespace.** `@adarsh` at Waterloo blocks `@adarsh`
+  at York, and the collision rate is now five times worse for someone who will
+  never meet the person holding it. Scoping handles per school would break
+  `/u/<handle>` and every invite link already sent, so it needs a decision
+  rather than a patch.
+- **The "N students have joined" counter is global.** At a school with four
+  users it reads as a thousand, which is true and misleading in the way that
+  matters — density is local. A per-school count would be more honest.
+- **Shared gaps do not know about distance.** A thirty-minute window shared with
+  someone in Hamilton is real for a phone call and useless for lunch, and it is
+  rendered identically to one shared with somebody two buildings away.
+- **The per-IP sign-in limit is 20 an hour.** Campus wifi is one NAT, so a
+  residence hits it as a group. Dormant while email codes are off.
+
+### One manual step
+
+`scripts/migrate-schools.sql` has to be run against the live database before
+this deploys. `db:push` cannot do it alone: two new NOT NULL columns need values
+computed from existing rows. It is idempotent, and every existing row keeps the
+section identity it already had.
+
+---
+
 ## The starting point was not what the brief described
 
 The build brief lists nine files as "built, tested, and correct — do not

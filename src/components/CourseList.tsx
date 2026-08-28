@@ -36,7 +36,9 @@ export function CourseList({ courses }: { courses: ParsedCourse[] }) {
               <ul className="mt-2 space-y-1.5">
                 {course.sections.map((section) => (
                   <li
-                    key={section.classNumber}
+                    // Most portals print no class number, so the component and
+                    // section code are what distinguish two rows of one course.
+                    key={section.classNumber ?? `${section.component}.${section.sectionCode}`}
                     className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[13px]"
                   >
                     <span className="chip">

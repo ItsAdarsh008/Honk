@@ -26,6 +26,7 @@ import { ScheduleGrid, type GridMeeting } from "@/components/ScheduleGrid";
 import { ShareButton } from "@/components/ShareButton";
 import { PrivacyPrompt } from "@/components/PrivacyPrompt";
 import { PasteFlow } from "@/components/PasteFlow";
+import { schoolOrDefault } from "@/lib/schools";
 
 export const metadata: Metadata = { title: "Your classes" };
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export default async function HomePage() {
   if (!user) redirect("/signin");
   if (!hasProfile(user)) redirect("/signin");
 
+  const school = schoolOrDefault(user.schoolId);
   const termCode = await getCurrentTermCode(user.id);
 
   if (!termCode) {
@@ -45,12 +47,12 @@ export default async function HomePage() {
             Let's get your schedule in.
           </h1>
           <p className="text-[15px] text-[var(--ink-soft)]">
-            Paste it from Quest, then Honk shows who else is in your classes and when
-            you are free at the same time.
+            Paste it from {school.guide?.portal ?? "your portal"}, then Honk shows who else
+            is in your classes and when you are free at the same time.
           </p>
         </div>
         <div className="card p-5 sm:p-6">
-          <PasteFlow signedIn />
+          <PasteFlow signedIn schoolId={user.schoolId} />
         </div>
       </div>
     );
@@ -100,7 +102,10 @@ export default async function HomePage() {
         <h1 className="text-[26px] font-semibold tracking-[-0.02em]">
           {user.displayName?.split(" ")[0] ?? "Your"} classes
         </h1>
-        <span className="chip">{termName(termCode)}</span>
+        <div className="flex flex-wrap gap-2">
+          <span className="chip">{school.short}</span>
+          <span className="chip">{termName(termCode)}</span>
+        </div>
       </div>
 
       {/*
@@ -136,7 +141,8 @@ export default async function HomePage() {
               <>
                 Nobody from your classes has joined yet, so there is nothing to see above.
                 That is not broken — it is what being early looks like. Send your link to
-                the people you already sit next to.
+                the people you already sit next to, and to the ones who went somewhere
+                else: shared free time works across universities.
               </>
             )}
           </p>
@@ -157,6 +163,7 @@ export default async function HomePage() {
                 <PersonRow
                   key={entry.profile.id}
                   person={entry.profile}
+                  viewerSchoolId={user.schoolId}
                   trailing={
                     <span className="mono shrink-0 text-[12px] text-[var(--ink-soft)]">
                       until {formatMinutes(entry.until)}
@@ -191,6 +198,7 @@ export default async function HomePage() {
                 <PersonRow
                   key={request.profile.id}
                   person={{ ...request.profile, relationship: "request_received" }}
+                  viewerSchoolId={user.schoolId}
                 />
               ))}
             </ul>
@@ -204,6 +212,7 @@ export default async function HomePage() {
                 <PersonRow
                   key={friend.profile.id}
                   person={friend.profile}
+                  viewerSchoolId={user.schoolId}
                   trailing={
                     <span className="mono shrink-0 text-right text-[12px] text-[var(--ink-soft)]">
                       {weekdayShort(friend.weekday)}{" "}

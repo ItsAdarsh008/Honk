@@ -8,14 +8,23 @@
  * student in that lecture points at.
  */
 
-import type { ParsedCourse, ParsedMeeting, ParsedSection } from "../quest/parse";
+import { sectionKeyFor, type ParsedCourse, type ParsedMeeting, type ParsedSection } from "./types";
 
 export type ValidationResult =
   | { ok: true; value: { courses: ParsedCourse[]; termCode: string } }
   | { ok: false; error: string };
 
-const SUBJECT_RE = /^[A-Z]{2,8}$/;
-const CATALOG_RE = /^\d{1,3}[A-Z]{0,2}$/;
+/**
+ * Course codes, across five registrars.
+ *
+ * `CS 135` and `MATH 245B` at Waterloo, `COMPSCI 1MD3` at McMaster, `ECON
+ * 1P92` at Brock, `PSYC 1000` at Guelph-Humber, `AP/ECON 1000` at York — the
+ * faculty prefix included, because that is how York writes and reads a code.
+ * Loose enough to admit all of them and still tight enough that these are the
+ * only thing that reaches a row other students share.
+ */
+const SUBJECT_RE = /^[A-Z]{2,10}(?:\/[A-Z]{2,10})?$/;
+const CATALOG_RE = /^\d[0-9A-Z]{0,6}$/;
 const COMPONENT_RE = /^[A-Z]{2,4}$/;
 const SECTION_CODE_RE = /^[A-Z0-9]{1,6}$/;
 const TERM_RE = /^\d{4}$/;
@@ -71,14 +80,14 @@ export function validateSchedule(input: unknown): ValidationResult {
   }
 
   const courses: ParsedCourse[] = [];
-  const seenClassNumbers = new Set<number>();
+  const seenSectionKeys = new Set<string>();
 
   for (const item of raw.courses) {
     if (!item || typeof item !== "object") return { ok: false, error: "A course was malformed." };
     const c = item as Record<string, unknown>;
 
-    const subject = str(c.subject, 8)?.toUpperCase();
-    const catalog = str(c.catalog, 5)?.toUpperCase();
+    const subject = str(c.subject, 21)?.toUpperCase();
+    const catalog = str(c.catalog, 7)?.toUpperCase();
     if (!subject || !SUBJECT_RE.test(subject)) return { ok: false, error: "A course code looked wrong." };
     if (!catalog || !CATALOG_RE.test(catalog)) return { ok: false, error: "A course number looked wrong." };
 
@@ -96,14 +105,19 @@ export function validateSchedule(input: unknown): ValidationResult {
       }
       const s = sectionItem as Record<string, unknown>;
 
-      const classNumber = int(s.classNumber, 1, 99999);
-      if (classNumber === null) return { ok: false, error: "A class number looked wrong." };
-      // Quest guarantees these unique within a term; a duplicate means the
-      // payload was hand-edited.
-      if (seenClassNumbers.has(classNumber)) {
-        return { ok: false, error: "That schedule lists the same class twice." };
+      /*
+       * A class number where the portal prints one, and null where it does
+       * not. Absent is the common case now — only PeopleSoft has them — but
+       * present-and-malformed is still refused, because the number is written
+       * into a row every other student in that class points at.
+       */
+      const classNumber =
+        s.classNumber === null || s.classNumber === undefined
+          ? null
+          : int(s.classNumber, 1, 99999);
+      if (s.classNumber !== null && s.classNumber !== undefined && classNumber === null) {
+        return { ok: false, error: "A class number looked wrong." };
       }
-      seenClassNumbers.add(classNumber);
 
       const sectionCode = str(s.sectionCode, 6)?.toUpperCase();
       const component = str(s.component, 4)?.toUpperCase();
@@ -147,15 +161,33 @@ export function validateSchedule(input: unknown): ValidationResult {
       const instructor = optionalStr(s.instructor, 80);
       if (instructor === INVALID) return { ok: false, error: "An instructor name looked wrong." };
 
-      sections.push({
+      const section: ParsedSection = {
         classNumber,
         sectionCode,
+        // Trusted only as a hint that identity should come from the meeting
+        // pattern instead — it can never widen what this section matches.
+        sectionCodeInferred: s.sectionCodeInferred === true,
         component,
         instructor,
         startDate,
         endDate,
         meetings,
-      });
+      };
+
+      /*
+       * One section can only appear once in a schedule. The check is on the
+       * identity the database will use, not on the class number, so it holds
+       * for the four schools that have no class numbers — and a duplicate
+       * there means the payload was hand-edited, since no portal prints the
+       * same section twice.
+       */
+      const key = sectionKeyFor(subject, catalog, section);
+      if (seenSectionKeys.has(key)) {
+        return { ok: false, error: "That schedule lists the same class twice." };
+      }
+      seenSectionKeys.add(key);
+
+      sections.push(section);
     }
 
     const title = optionalStr(c.title, 120);

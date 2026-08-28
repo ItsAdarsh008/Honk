@@ -1,7 +1,7 @@
-import { fail, json, readJson, requireDatabase } from "@/app/api/_lib";
+import { json, readAddress, readJson, requireDatabase } from "@/app/api/_lib";
 import { setChallenge } from "@/lib/auth/passkey-challenge";
 import { registrationOptionsFor } from "@/lib/auth/passkey";
-import { findOrCreatePasskeyUser, getCurrentUser, normalizeEmail } from "@/lib/auth/session";
+import { findOrCreatePasskeyUser, getCurrentUser } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
@@ -20,11 +20,9 @@ export async function POST(request: Request) {
   let user = await getCurrentUser();
   if (!user) {
     const body = await readJson<{ email?: string }>(request);
-    const email = normalizeEmail(body?.email ?? "");
-    if (!email) {
-      return fail("Honk is Waterloo-only, so this needs to be a @uwaterloo.ca address.");
-    }
-    user = await findOrCreatePasskeyUser(email);
+    const address = readAddress(body?.email);
+    if (!address.ok) return address.response;
+    user = await findOrCreatePasskeyUser(address.email);
   }
 
   const options = await registrationOptionsFor(user);

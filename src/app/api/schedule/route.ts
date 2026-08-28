@@ -18,7 +18,9 @@ export async function POST(request: Request) {
   if (!validated.ok) return fail(validated.error, 400);
 
   try {
-    const result = await saveSchedule(user.id, validated.value);
+    // The school comes from the account, never from the payload: a schedule is
+    // saved into the campus whose address created the account.
+    const result = await saveSchedule(user.id, user.schoolId, validated.value);
     return json({ ok: true, ...result });
   } catch {
     return fail("That schedule couldn't be saved. Try pasting it again.", 500);

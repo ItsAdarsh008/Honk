@@ -12,6 +12,7 @@ import {
   nextSharedGap,
   sharedGaps,
   sharedGapsForWeek,
+  shiftWeek,
 } from "./intervals";
 
 const at = (h: number, m = 0) => h * 60 + m;
@@ -282,5 +283,63 @@ describe("atLeast", () => {
   it("keeps intervals of exactly the minimum length", () => {
     expect(atLeast([{ start: at(10), end: at(10, 30) }], 30)).toHaveLength(1);
     expect(atLeast([{ start: at(10), end: at(10, 29) }], 30)).toHaveLength(0);
+  });
+});
+
+describe("shiftWeek", () => {
+  it("is a no-op for a zero shift, which is every school today", () => {
+    const week = emptyWeek();
+    week[1] = [{ start: at(10), end: at(11) }];
+    expect(shiftWeek(week, 0)).toBe(week);
+  });
+
+  it("moves a class into the viewer's clock", () => {
+    // A 9am Monday lecture in Vancouver is noon Monday in Waterloo.
+    const week = emptyWeek();
+    week[1] = [{ start: at(9), end: at(10) }];
+    const shifted = shiftWeek(week, 180);
+    expect(shifted[1]).toEqual([{ start: at(12), end: at(13) }]);
+  });
+
+  it("moves a class past midnight onto the next weekday", () => {
+    // A 10pm Monday class three hours west is a 1am *Tuesday* class here.
+    const week = emptyWeek();
+    week[1] = [{ start: at(22), end: at(23, 30) }];
+    const shifted = shiftWeek(week, 180);
+    expect(shifted[1]).toEqual([]);
+    expect(shifted[2]).toEqual([{ start: at(1), end: at(2, 30) }]);
+  });
+
+  it("splits a class that straddles midnight rather than truncating it", () => {
+    const week = emptyWeek();
+    week[1] = [{ start: at(23), end: at(23, 59) }];
+    const shifted = shiftWeek(week, 30);
+    expect(shifted[1]).toEqual([{ start: at(23, 30), end: at(24) }]);
+    expect(shifted[2]).toEqual([{ start: 0, end: at(0, 29) }]);
+  });
+
+  it("wraps Sunday round to Monday and back", () => {
+    const sunday = emptyWeek();
+    sunday[7] = [{ start: at(23), end: at(23, 30) }];
+    expect(shiftWeek(sunday, 120)[1]).toEqual([{ start: at(1), end: at(1, 30) }]);
+
+    const monday = emptyWeek();
+    monday[1] = [{ start: at(0, 30), end: at(1) }];
+    expect(shiftWeek(monday, -120)[7]).toEqual([{ start: at(22, 30), end: at(23) }]);
+  });
+
+  it("leaves a shifted week usable by the gap maths", () => {
+    const mine = emptyWeek();
+    mine[1] = [{ start: at(9), end: at(10) }];
+    const theirs = shiftWeek(
+      { ...emptyWeek(), 1: [{ start: at(6), end: at(7) }] },
+      180,
+    );
+    // Their 6am became 9am here, so it now collides with my 9am rather than
+    // sitting harmlessly before the campus day.
+    expect(sharedGapsForWeek([mine, theirs])[1]).toEqual([
+      { start: DAY_START, end: at(9) },
+      { start: at(10), end: DAY_END },
+    ]);
   });
 });

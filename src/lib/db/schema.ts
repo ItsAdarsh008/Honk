@@ -21,8 +21,21 @@ export const users = pgTable(
   "users",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    /** Always stored normalised and lower-case. Gated to @uwaterloo.ca. */
+    /**
+     * Always stored normalised and lower-case, folded onto the school's
+     * canonical domain. Gated to the domains of a live school — `lib/schools.ts`.
+     */
     email: text("email").notNull(),
+    /**
+     * Which university, as an id from `lib/schools.ts`.
+     *
+     * Defaulted rather than nullable because every row written before Honk
+     * left Waterloo is a Waterloo row, and a null would have to be handled at
+     * every read. Set from the email domain at sign-up and not changed after:
+     * a schedule belongs to a campus, and moving an account between them would
+     * leave its enrollments pointing at another school's sections.
+     */
+    schoolId: text("school_id").notNull().default("waterloo"),
     handle: text("handle"),
     displayName: text("display_name"),
     avatarUrl: text("avatar_url"),
@@ -143,31 +156,51 @@ export const terms = pgTable("terms", {
   endDate: date("end_date"),
 });
 
+/**
+ * Courses are per school, not global.
+ *
+ * `ECON 1000` is a real course at four of the five schools Honk knows —
+ * different rooms, different professors, different students. One shared row
+ * would put a York student in a Guelph-Humber lecture, which is the single
+ * thing the classmate feature must never do.
+ */
 export const courses = pgTable(
   "courses",
   {
     id: serial("id").primaryKey(),
+    schoolId: text("school_id").notNull().default("waterloo"),
     subject: text("subject").notNull(),
     catalog: text("catalog").notNull(),
     title: text("title"),
   },
-  (t) => [unique("courses_subject_catalog_key").on(t.subject, t.catalog)],
+  (t) => [unique("courses_school_subject_catalog_key").on(t.schoolId, t.subject, t.catalog)],
 );
 
 /**
- * Two students in the same lecture point at the *same* row, keyed on
- * (term_code, class_number) which Quest guarantees unique. That is what makes
- * overlap an index lookup instead of a time-range comparison.
+ * Two students in the same lecture point at the *same* row. That is what makes
+ * finding classmates an index lookup rather than a comparison of meeting
+ * times, and it is why one person's paste fixes a room number for everyone
+ * else in the room.
+ *
+ * Identity used to be (term_code, class_number), because Quest prints a class
+ * number and guarantees it unique within a term. Most portals in the country
+ * print nothing of the kind, so identity is now a text `section_key` scoped to
+ * the school: the class number where there is one, and course-component-section
+ * where there is not. See `sectionKeyFor` in `lib/schedule/types.ts`.
  */
 export const sections = pgTable(
   "sections",
   {
     id: serial("id").primaryKey(),
+    schoolId: text("school_id").notNull().default("waterloo"),
     courseId: integer("course_id")
       .notNull()
       .references(() => courses.id, { onDelete: "cascade" }),
     termCode: text("term_code").notNull(),
-    classNumber: integer("class_number").notNull(),
+    /** Stable identity within (school, term). Never shown to anyone. */
+    sectionKey: text("section_key").notNull(),
+    /** PeopleSoft's own number, where the portal prints one. */
+    classNumber: integer("class_number"),
     sectionCode: text("section_code").notNull(),
     component: text("component").notNull(),
     instructor: text("instructor"),
@@ -175,7 +208,7 @@ export const sections = pgTable(
     endDate: date("end_date"),
   },
   (t) => [
-    unique("sections_term_class_key").on(t.termCode, t.classNumber),
+    unique("sections_school_term_key").on(t.schoolId, t.termCode, t.sectionKey),
     index("sections_course_idx").on(t.courseId, t.termCode),
   ],
 );

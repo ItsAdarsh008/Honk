@@ -1,23 +1,30 @@
 /**
- * Why a real Quest paste did not parse.
+ * Why a real paste did not parse.
  *
- *   npx vite-node scripts/diagnose-paste.ts quest-samples/mine.txt
+ *   npx vite-node scripts/diagnose-paste.ts quest-samples/mine.txt [school]
  *
- * `parseQuestSchedule` is deliberately quiet — it warns about lines that were
- * plainly trying to be data and ignores everything else, which is right for a
- * user and useless for debugging. This prints what the parser saw line by line:
- * how each line was split, which pattern claimed it, and which ones fell
- * through. The first block of `-` lines is almost always the answer.
+ * The parsers are deliberately quiet — they warn about lines that were plainly
+ * trying to be data and ignore everything else, which is right for a user and
+ * useless for debugging. This prints what the parser saw line by line: how each
+ * line was split, which pattern claimed it, and which ones fell through. The
+ * first block of `-` lines is almost always the answer.
+ *
+ * This is the tool for adding a school. Get one real paste, run it through
+ * here, and the lines it could not read are the work.
  */
 
 import { readFileSync } from "node:fs";
-import { parseQuestSchedule } from "../src/lib/quest/parse";
+import { parseSchedule } from "../src/lib/schedule/parse";
+import { LIVE_SCHOOLS, schoolOrDefault } from "../src/lib/schools";
 
 const path = process.argv[2];
 if (!path) {
-  console.error("usage: vite-node scripts/diagnose-paste.ts <file>");
+  console.error("usage: vite-node scripts/diagnose-paste.ts <file> [school]");
+  console.error(`schools: ${LIVE_SCHOOLS.map((s) => s.id).join(", ")}`);
   process.exit(2);
 }
+
+const school = schoolOrDefault(process.argv[3]);
 
 const raw = readFileSync(path, "utf8");
 
@@ -62,8 +69,12 @@ for (const [i, line] of lines.entries()) {
   console.log(`${n}  ${kind.padEnd(21)} ${delimiter(line).padEnd(14)} ${JSON.stringify(shown)}`);
 }
 
-const result = parseQuestSchedule(raw);
+const result = parseSchedule(raw, { schoolId: school.id, today: new Date().toISOString().slice(0, 10) });
 console.log(`\n-- result --------------------------------------------------`);
+console.log(`school:   ${school.name} (${school.id})`);
+console.log(
+  `parser:   ${result.parser}${result.parser === school.parser ? "" : "  <- the other parser read more of it"}`,
+);
 console.log(`courses:  ${result.courses.length}`);
 console.log(`termCode: ${result.termCode ?? "(none)"}`);
 for (const c of result.courses) {
@@ -78,7 +89,7 @@ for (const c of result.courses) {
 
       .join(", ");
     console.log(
-      `    ${s.classNumber} ${s.sectionCode} ${s.component}  ${when || "(no meetings)"}  ${s.startDate ?? "?"}..${s.endDate ?? "?"}`,
+      `    ${s.classNumber ?? "—"} ${s.sectionCode} ${s.component}  ${when || "(no meetings)"}  ${s.startDate ?? "?"}..${s.endDate ?? "?"}`,
     );
   }
 }

@@ -10,11 +10,13 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { RelationshipState } from "@/lib/friends";
+import { getSchool } from "@/lib/schools";
 
 export interface Person {
   id: string;
   handle: string | null;
   displayName: string | null;
+  schoolId?: string;
   relationship: RelationshipState;
 }
 
@@ -40,10 +42,13 @@ export async function friendAction(action: FriendAction, userId: string): Promis
 export function PersonRow({
   person,
   trailing,
+  viewerSchoolId,
 }: {
   person: Person;
   /** Replaces the action button — used for "free until 2:00" and gap times. */
   trailing?: React.ReactNode;
+  /** The viewer's school, so only a *different* one gets labelled. */
+  viewerSchoolId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -66,6 +71,15 @@ export function PersonRow({
   };
 
   const name = person.displayName ?? "Someone";
+  /*
+   * Only when it differs from the viewer's. On your own campus every row
+   * would say the same word, which is noise; on a mixed list it is the thing
+   * that explains why you share no classes with somebody you are friends with.
+   */
+  const elsewhere =
+    person.schoolId && viewerSchoolId && person.schoolId !== viewerSchoolId
+      ? getSchool(person.schoolId)
+      : null;
 
   return (
     <li className="flex items-center justify-between gap-3 py-2.5">
@@ -82,6 +96,7 @@ export function PersonRow({
         )}
         <span className="mono block truncate text-[12px] text-[var(--ink-faint)]">
           @{person.handle ?? "unknown"}
+          {elsewhere && <span className="ml-1.5 text-[var(--ink-soft)]">{elsewhere.short}</span>}
         </span>
         {error && <span className="block text-[12px] text-[#a8442c]">{error}</span>}
       </div>

@@ -20,7 +20,14 @@
 import { and, desc, eq, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "../db";
 import { courses, enrollments, meetings, sections, users } from "../db/schema";
-import { areFriends, blockedUserIds, friendIds, relationshipWith, type RelationshipState } from "../friends";
+import {
+  areFriends,
+  blockedUserIds,
+  friendIds,
+  relationshipWith,
+  relationshipsWith,
+  type RelationshipState,
+} from "../friends";
 import {
   DAY_END,
   DAY_START,
@@ -31,9 +38,12 @@ import {
   nextSharedGap,
   sharedGaps,
   sharedGapsForWeek,
+  shiftWeek,
   type Interval,
   type WeekBusy,
 } from "./intervals";
+import { schoolOrDefault } from "../schools";
+import { CAMPUS_TZ, tzOffsetMinutes } from "../time";
 
 export interface ScheduleMeeting {
   weekday: number;
@@ -44,7 +54,8 @@ export interface ScheduleMeeting {
 
 export interface ScheduleSection {
   sectionId: number;
-  classNumber: number;
+  /** PeopleSoft prints one; most portals do not. */
+  classNumber: number | null;
   sectionCode: string;
   component: string;
   instructor: string | null;
@@ -64,12 +75,19 @@ export interface Classmate {
   id: string;
   handle: string | null;
   displayName: string | null;
+  /**
+   * Which university. Shown next to a name only when it differs from the
+   * viewer's, which is the only time it tells anyone anything — and it is not
+   * a privacy loss: an address at that school is what created the account, and
+   * the school is the reason the two of them can see each other at all.
+   */
+  schoolId: string;
   relationship: RelationshipState;
 }
 
 export interface ClassCount {
   sectionId: number;
-  classNumber: number;
+  classNumber: number | null;
   sectionCode: string;
   component: string;
   courseId: number;
@@ -183,7 +201,13 @@ export async function getMySchedule(
 
   const out = [...byCourse.values()];
   for (const course of out) {
-    course.sections.sort((a, b) => a.component.localeCompare(b.component) || a.classNumber - b.classNumber);
+    // Class number where there is one, section code where there is not.
+    course.sections.sort(
+      (a, b) =>
+        a.component.localeCompare(b.component) ||
+        (a.classNumber ?? 0) - (b.classNumber ?? 0) ||
+        a.sectionCode.localeCompare(b.sectionCode),
+    );
     for (const section of course.sections) {
       section.meetings.sort((a, b) => a.weekday - b.weekday || a.startMin - b.startMin);
     }
@@ -193,47 +217,141 @@ export async function getMySchedule(
 }
 
 /**
- * Busy intervals for a set of users, keyed by user id.
+ * The term each of these people is actually in, by their own reckoning.
+ *
+ * One term code cannot be assumed to mean the same thing to two people once
+ * they are at different universities. Honk derives a term from the dates in a
+ * paste, and schools do not agree on where a term starts: York's Fall/Winter
+ * courses run September to April and derive to `1269`, so in January a York
+ * student is still on `1269` while a Waterloo friend has moved to `1271`.
+ *
+ * Reading everybody at the viewer's term code was the bug that made that
+ * dangerous rather than merely untidy — see `busyWeeksFor`.
+ */
+async function currentTerms(userIds: string[], db: Db): Promise<Map<string, string>> {
+  if (!userIds.length) return new Map();
+  const rows = await db
+    .select({
+      userId: enrollments.userId,
+      termCode: sql<string>`max(${enrollments.termCode})`,
+    })
+    .from(enrollments)
+    .where(inArray(enrollments.userId, userIds))
+    .groupBy(enrollments.userId);
+  return new Map(rows.map((row) => [row.userId, row.termCode]));
+}
+
+/**
+ * Busy intervals for a set of users, keyed by user id, all expressed in one
+ * time zone.
  *
  * Private on purpose. Every caller must have already established that the
  * viewer is allowed to see these people's time.
+ *
+ * Two things here exist because Honk is at more than one university, and both
+ * are about the same failure: a schedule that could not be read must never
+ * come back looking like a schedule with nothing in it.
+ *
+ * **Everyone is read at their own term.** Filtering every user by the viewer's
+ * term code meant a friend whose term is coded differently matched no rows,
+ * and an empty result was indistinguishable from an empty week. That rendered
+ * them free from eight in the morning until ten at night, every day — a
+ * confident, specific, wrong answer, which is the worst kind.
+ *
+ * **Somebody with no schedule at all is absent, not free.** They are left out
+ * of the returned map entirely, so callers skip them instead of inventing
+ * availability for them. This was always true of a friend who had not pasted
+ * yet; it just became common.
+ *
+ * `viewerTimezone` is the other half of comparability. Meetings are stored in
+ * the campus-local minutes their portal printed, which is the only sane thing
+ * to store — but two people's minutes only mean the same thing if their
+ * campuses keep the same clock. Everywhere Honk is live does today, so the
+ * shift is zero and this costs nothing; the moment a school west of Ontario
+ * turns on it is the difference between "free at 2" meaning one hour and
+ * meaning two different afternoons.
  */
 async function busyWeeksFor(
-  userIds: string[],
-  termCode: string,
+  terms: Map<string, string>,
   db: Db,
+  viewerTimezone: string = CAMPUS_TZ,
+  now: Date = new Date(),
 ): Promise<Map<string, WeekBusy>> {
   const out = new Map<string, WeekBusy>();
+  const userIds = [...terms.keys()];
   if (!userIds.length) return out;
 
   const rows = await db
     .select({
       userId: enrollments.userId,
+      termCode: enrollments.termCode,
+      schoolId: users.schoolId,
       weekday: meetings.weekday,
       startMin: meetings.startMin,
       endMin: meetings.endMin,
     })
     .from(enrollments)
     .innerJoin(meetings, eq(meetings.sectionId, enrollments.sectionId))
-    .where(and(inArray(enrollments.userId, userIds), eq(enrollments.termCode, termCode)));
+    .innerJoin(users, eq(users.id, enrollments.userId))
+    .where(inArray(enrollments.userId, userIds));
 
-  for (const id of userIds) out.set(id, emptyWeek());
+  const schoolOf = new Map<string, string>();
   for (const row of rows) {
-    const week = out.get(row.userId);
-    if (!week) continue;
+    // Each person's own term, not the viewer's.
+    if (row.termCode !== terms.get(row.userId)) continue;
+    let week = out.get(row.userId);
+    if (!week) {
+      week = emptyWeek();
+      out.set(row.userId, week);
+    }
+    schoolOf.set(row.userId, row.schoolId);
     week[row.weekday].push({ start: row.startMin, end: row.endMin });
+  }
+
+  const viewerOffset = tzOffsetMinutes(viewerTimezone, now);
+  for (const [id, week] of out) {
+    const theirTz = schoolOrDefault(schoolOf.get(id)).timezone;
+    const shift = viewerOffset - tzOffsetMinutes(theirTz, now);
+    if (shift !== 0) out.set(id, shiftWeek(week, shift));
   }
   return out;
 }
 
-/** The caller's own busy week. */
+/**
+ * The busy weeks for a viewer and the people they are allowed to see.
+ *
+ * The viewer is pinned to the term they are looking at; everybody else is read
+ * at whatever term they are actually in.
+ */
+async function weeksForViewerAnd(
+  viewerId: string,
+  otherIds: string[],
+  termCode: string,
+  db: Db,
+): Promise<Map<string, WeekBusy>> {
+  const terms = await currentTerms(otherIds, db);
+  terms.set(viewerId, termCode);
+  return busyWeeksFor(terms, db, await timezoneFor(viewerId, db));
+}
+
+/** The caller's own busy week, in their own campus's clock. */
 export async function getMyBusyWeek(
   userId: string,
   termCode: string,
   db: Db = getDb(),
 ): Promise<WeekBusy> {
-  const weeks = await busyWeeksFor([userId], termCode, db);
+  const weeks = await busyWeeksFor(new Map([[userId, termCode]]), db);
   return weeks.get(userId) ?? emptyWeek();
+}
+
+/** The time zone to read a user's own week in. */
+async function timezoneFor(userId: string, db: Db): Promise<string> {
+  const [row] = await db
+    .select({ schoolId: users.schoolId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return schoolOrDefault(row?.schoolId).timezone;
 }
 
 /* ------------------------------------------------------------------ *
@@ -338,6 +456,7 @@ export async function getClassmates(
       id: users.id,
       handle: users.handle,
       displayName: users.displayName,
+      schoolId: users.schoolId,
     })
     .from(enrollments)
     .innerJoin(users, eq(users.id, enrollments.userId))
@@ -351,12 +470,13 @@ export async function getClassmates(
       ),
     );
 
-  const withRelationship = await Promise.all(
-    rows.map(async (row) => ({
-      ...row,
-      relationship: await relationshipWith(userId, row.id, db),
-    })),
-  );
+  // One query for the whole room, not one per person in it. See
+  // `relationshipsWith` for why that mattered more than it looks.
+  const relationships = await relationshipsWith(userId, rows.map((row) => row.id), db);
+  const withRelationship = rows.map((row) => ({
+    ...row,
+    relationship: relationships.get(row.id) ?? ("none" as RelationshipState),
+  }));
 
   withRelationship.sort((a, b) => {
     const rank = (r: RelationshipState) => (r === "friends" ? 0 : r === "request_received" ? 1 : 2);
@@ -383,7 +503,13 @@ export async function getVisibleProfile(
   if (blocked.includes(targetId)) return null;
 
   const [target] = await db
-    .select({ id: users.id, handle: users.handle, displayName: users.displayName, discoverable: users.discoverable })
+    .select({
+      id: users.id,
+      handle: users.handle,
+      displayName: users.displayName,
+      schoolId: users.schoolId,
+      discoverable: users.discoverable,
+    })
     .from(users)
     .where(and(eq(users.id, targetId), isNotNull(users.verifiedAt)))
     .limit(1);
@@ -407,6 +533,7 @@ export async function getVisibleProfile(
     id: target.id,
     handle: target.handle,
     displayName: target.displayName,
+    schoolId: target.schoolId,
     relationship,
     sharedSectionCount: count,
   };
@@ -440,9 +567,13 @@ export async function getProfileByHandle(
  * ------------------------------------------------------------------ */
 
 /**
- * Shared free windows for a whole week. Returns null — not an empty week —
- * when the two are not accepted friends, so a caller cannot mistake "no
- * permission" for "no free time".
+ * Shared free windows for a whole week.
+ *
+ * Returns null — not an empty week — in the two cases where there is no answer
+ * to give: the pair are not accepted friends, or one of them has no schedule
+ * saved at all. Both would otherwise come back as a week of perfect
+ * availability, and a caller cannot be expected to tell that apart from a
+ * genuinely empty timetable.
  */
 export async function getSharedGapsWith(
   userId: string,
@@ -451,8 +582,11 @@ export async function getSharedGapsWith(
   db: Db = getDb(),
 ): Promise<WeekBusy | null> {
   if (!(await areFriends(userId, friendId, db))) return null;
-  const weeks = await busyWeeksFor([userId, friendId], termCode, db);
-  return sharedGapsForWeek([weeks.get(userId) ?? emptyWeek(), weeks.get(friendId) ?? emptyWeek()]);
+  const weeks = await weeksForViewerAnd(userId, [friendId], termCode, db);
+  const mine = weeks.get(userId);
+  const theirs = weeks.get(friendId);
+  if (!mine || !theirs) return null;
+  return sharedGapsForWeek([mine, theirs]);
 }
 
 /** The next shared window with one friend. Null when they are not a friend. */
@@ -481,17 +615,28 @@ export async function getFriendsWithNextGap(
   const ids = await friendIds(userId, db);
   if (!ids.length) return [];
 
-  const weeks = await busyWeeksFor([userId, ...ids], termCode, db);
-  const mine = weeks.get(userId) ?? emptyWeek();
+  const weeks = await weeksForViewerAnd(userId, ids, termCode, db);
+  const mine = weeks.get(userId);
+  if (!mine) return [];
 
   const profiles = await db
-    .select({ id: users.id, handle: users.handle, displayName: users.displayName })
+    .select({
+      id: users.id,
+      handle: users.handle,
+      displayName: users.displayName,
+      schoolId: users.schoolId,
+    })
     .from(users)
     .where(inArray(users.id, ids));
 
   const out: FriendGap[] = [];
   for (const profile of profiles) {
-    const week = sharedGapsForWeek([mine, weeks.get(profile.id) ?? emptyWeek()]);
+    // No schedule saved is not the same as nothing on this week. Somebody who
+    // has not pasted, or whose term is coded differently, is left out rather
+    // than advertised as free.
+    const theirs = weeks.get(profile.id);
+    if (!theirs) continue;
+    const week = sharedGapsForWeek([mine, theirs]);
     const next = nextSharedGap(week, now.weekday, now.minute);
     if (!next) continue;
     out.push({
@@ -524,18 +669,24 @@ export async function getFreeNow(
   const ids = await friendIds(userId, db);
   if (!ids.length) return [];
 
-  const weeks = await busyWeeksFor([userId, ...ids], termCode, db);
-  const mine = weeks.get(userId) ?? emptyWeek();
-  if (!isFreeAt(mine[now.weekday] ?? [], now.minute)) return [];
+  const weeks = await weeksForViewerAnd(userId, ids, termCode, db);
+  const mine = weeks.get(userId);
+  if (!mine || !isFreeAt(mine[now.weekday] ?? [], now.minute)) return [];
 
   const profiles = await db
-    .select({ id: users.id, handle: users.handle, displayName: users.displayName })
+    .select({
+      id: users.id,
+      handle: users.handle,
+      displayName: users.displayName,
+      schoolId: users.schoolId,
+    })
     .from(users)
     .where(inArray(users.id, ids));
 
   const out: FreeFriend[] = [];
   for (const profile of profiles) {
-    const theirs = weeks.get(profile.id) ?? emptyWeek();
+    const theirs = weeks.get(profile.id);
+    if (!theirs) continue;
     const shared = sharedGaps([mine[now.weekday] ?? [], theirs[now.weekday] ?? []], {
       minMinutes: 1,
     });

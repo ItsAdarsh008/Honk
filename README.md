@@ -1,7 +1,9 @@
 # Honk
 
-Paste your Quest schedule, see who you share classes and free time with.
-University of Waterloo only.
+Paste your class schedule, see who you share classes and free time with.
+Live at Waterloo, York, Guelph-Humber, McMaster and Brock; every other Canadian
+university is behind `/universities`, which asks for the one thing that blocks
+adding a school — a real paste out of its portal.
 
 Named after the campus geese. The name is the joke — the interface is calm.
 See `SPEC.md` for the product spec, `DEPLOY.md` for getting it online, and
@@ -12,11 +14,13 @@ most likely to break.
 
 | Piece | State |
 |---|---|
-| Quest paste parser | ✅ 59 tests, never seen a real paste — see `CHANGELOG.md` |
+| PeopleSoft parser (Quest, Mosaic) | ✅ 68 tests, one real Quest paste |
+| Tolerant parser (York, Brock, Guelph-Humber) | ⚠️ 29 tests, **no real paste from any of them yet** |
+| School registry + cross-school friends | ✅ 14 tests, 2 more integration tests |
 | Overlap / shared-gap interval maths | ✅ 32 tests |
 | Landing page + paste → review flow | ✅ runs client-side, no account needed |
-| Database schema (Drizzle) | ✅ live on Neon, all nine tables pushed |
-| Session + `@uwaterloo.ca` verification | ✅ 14 tests, routes wired |
+| Database schema (Drizzle) | ⚠️ school columns need `scripts/migrate-schools.sql` run once |
+| Session + school-address verification | ✅ 16 tests, routes wired |
 | Classmate + shared-gap queries | ✅ screens built, 12 integration tests **passing on Neon** |
 | Friend graph (request/accept/block) | ✅ screens built |
 | `/home`, settings, profile, invite links | ✅ built |
@@ -36,7 +40,7 @@ npm run dev
 ```
 
 ```bash
-npm test           # 149 tests (137 unit + 12 integration, with .env.local present)
+npm test           # 253 tests (239 unit + 14 integration, with .env.local present)
 npm run typecheck
 npm run build
 npm run smoke -- <url>   # 21 checks against a deployed URL

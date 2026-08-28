@@ -15,21 +15,21 @@ export const metadata: Metadata = {
     template: "%s · Honk",
   },
   description:
-    "Paste your Quest schedule and see who else is in your classes, and when you and your friends are free at the same time. University of Waterloo only.",
+    "Paste your class schedule and see who else is in your classes, and when you and your friends are free at the same time. Waterloo, York, Guelph-Humber, McMaster and Brock.",
   applicationName: "Honk",
   openGraph: {
     type: "website",
     siteName: "Honk",
     title: "Honk — see who's in your classes",
     description:
-      "Paste your Quest schedule and find out who else is in it. University of Waterloo only.",
+      "Paste your class schedule and find out who else is in it. Five Canadian universities, and counting.",
     url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
     title: "Honk — see who's in your classes",
     description:
-      "Paste your Quest schedule and find out who else is in it. University of Waterloo only.",
+      "Paste your class schedule and find out who else is in it. Five Canadian universities, and counting.",
   },
   robots: { index: true, follow: true },
 };
@@ -84,8 +84,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <footer className="mx-auto max-w-3xl px-5 pb-10 pt-4">
           <hr className="hairline" />
           <p className="mt-4 text-[13px] text-[var(--ink-faint)]">
-            Honk is not affiliated with the University of Waterloo. Your schedule is only
-            visible to people you have added.
+            Honk is not affiliated with any university. Your schedule is only visible to
+            people you have added.{" "}
+            <Link href="/universities" className="underline-offset-2 hover:text-[var(--clay)] hover:underline">
+              Bring it to yours
+            </Link>
+            .
           </p>
           <p className="mt-2 text-[13px] text-[var(--ink-faint)]">
             Made by{" "}
