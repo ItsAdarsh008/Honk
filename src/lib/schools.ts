@@ -42,10 +42,46 @@ export type ParserId = "peoplesoft" | "generic";
 export interface PasteGuide {
   /** What the portal is called on that campus. Students know the brand name. */
   portal: string;
+  /**
+   * How to get to the schedule page. Navigation only — the copy step is added
+   * to every guide by `withCopyStep`, so it cannot be worded differently at one
+   * school or forgotten at a new one.
+   */
   steps: string[];
   /** Said out loud when Honk has not seen many real pastes from here yet. */
   note?: string;
 }
+
+/**
+ * The last step at every school, written once.
+ *
+ * "Select the whole page and copy it" is what a person who already knows how
+ * to do this reads as obvious and what everybody else reads as vague. The
+ * keystrokes are the instruction — naming them is the difference between a
+ * student copying the page and a student copying the one line they happened to
+ * drag over, which parses as an empty schedule and looks like Honk is broken.
+ *
+ * Both platforms named, because a Mac has no Ctrl+A and being told to press a
+ * key that does nothing is worse than being told nothing.
+ */
+const COPY_STEP =
+  "Press Ctrl+A then Ctrl+C to select and copy the whole page — ⌘A then ⌘C on a Mac — and paste it above.";
+
+/** Every guide ends the same way. */
+function withCopyStep(guide: PasteGuide): PasteGuide {
+  return { ...guide, steps: [...guide.steps, COPY_STEP] };
+}
+
+/*
+ * There is deliberately no standing "laptop only" line here.
+ *
+ * It was tried as a note under every school's steps and taken back out: on a
+ * laptop — which is where somebody following these steps already is — it tells
+ * them something they cannot act on and did not need. The warning lives in
+ * `PasteFlow`, rendered only once the browser has said it is a handheld, so it
+ * reaches exactly the people who are about to waste five minutes and nobody
+ * else.
+ */
 
 export interface School {
   id: string;
@@ -109,7 +145,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Open Quest and go to Enroll → My Class Schedule.",
         "Switch to List View.",
-        "Select the whole page and copy it, then paste it above.",
       ],
     },
   },
@@ -129,7 +164,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Sign in to LORIS from the Laurier portal.",
         "Open Student Services → Registration → Student Detail Schedule.",
-        "Select the whole page and copy it, then paste it above.",
       ],
       note: "Laurier and Waterloo share a term, so a double-degree schedule from both pastes fine — do them one after the other.",
     },
@@ -149,7 +183,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Open ACORN and sign in with your UTORid.",
         "Go to Academics → Timetable and pick the term.",
-        "Select the whole page and copy it, then paste it above.",
       ],
     },
   },
@@ -169,7 +202,7 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Sign in to Student Center from the Western portal.",
         "Open My Academics → My Class Schedule and pick the term.",
-        "Switch to List View, select the whole page and copy it.",
+        "Switch to List View.",
       ],
     },
   },
@@ -188,7 +221,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Open Mosaic and go to Student Center → Weekly Schedule.",
         "Switch to List View.",
-        "Select the whole page and copy it, then paste it above.",
       ],
       note: "Mosaic and Quest are the same system underneath, so Honk reads this one well.",
     },
@@ -209,7 +241,7 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Open SOLUS from the Queen's portal.",
         "Go to Enrolment → My Class Schedule and pick the term.",
-        "Switch to List View, select the whole page and copy it.",
+        "Switch to List View.",
       ],
     },
   },
@@ -233,7 +265,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Sign in to Workday and open the Academics app.",
         "Go to Registration & Courses → View My Courses, or open your Schedule.",
-        "Select the whole page and copy it, then paste it above.",
       ],
       note: "Workday is unlike every other portal here, so this is the one most likely to need a fix. Send the paste if it comes out wrong.",
     },
@@ -253,7 +284,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Sign in to My Online Services with your Passport York account.",
         "Open Manage My Enrolment → Registration and Enrolment Module, then Plot My Timetable.",
-        "Select the whole timetable page and copy it, then paste it above.",
       ],
       note: "Visual Schedule Builder works too — copy the list underneath the grid, not the grid.",
     },
@@ -273,7 +303,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Open WebAdvisor and sign in, then go to Academics → Student Planning.",
         "Open Plan, Schedule, Register & Drop and pick the term.",
-        "Select the whole page and copy it, then paste it above.",
       ],
     },
   },
@@ -292,7 +321,6 @@ const LIVE: Array<Omit<School, "beta">> = [
       steps: [
         "Sign in to my.brocku.ca and open the Applicant and Student Self Serve tab.",
         "Open your timetable for the term from the menu on the left.",
-        "Select the whole page and copy it, then paste it above.",
       ],
     },
   },
@@ -373,7 +401,13 @@ const WAITLIST: Array<
  * and the parser is a guess until somebody proves it.
  */
 export const SCHOOLS: School[] = [
-  ...LIVE.map((s): School => ({ ...s, beta: !isOutOfBeta(s.id) })),
+  ...LIVE.map(
+    (s): School => ({
+      ...s,
+      beta: !isOutOfBeta(s.id),
+      guide: s.guide ? withCopyStep(s.guide) : undefined,
+    }),
+  ),
   ...WAITLIST.map(
     (s): School => ({
       ...s,

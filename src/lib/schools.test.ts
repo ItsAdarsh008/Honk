@@ -52,6 +52,22 @@ describe("the registry", () => {
     }
   });
 
+  it("ends every school's steps with the actual keystrokes", () => {
+    /*
+     * "Select the whole page and copy it" is obvious to somebody who already
+     * knows how and vague to everybody else, and a partial selection parses as
+     * an empty schedule — which reads as Honk being broken rather than as a
+     * mis-copy. The step is appended centrally so this cannot be forgotten at
+     * a new school; this test is what says so.
+     */
+    for (const school of LIVE_SCHOOLS) {
+      const last = school.guide!.steps[school.guide!.steps.length - 1];
+      expect(last, `${school.id} does not name Ctrl+A`).toContain("Ctrl+A");
+      expect(last, `${school.id} does not name Ctrl+C`).toContain("Ctrl+C");
+      expect(last, `${school.id} does not name the Mac keys`).toContain("⌘");
+    }
+  });
+
   it("launched at the schools it says it has, in the order it shows them", () => {
     expect(LIVE_SCHOOLS.map((s) => s.id)).toEqual([
       "waterloo",
