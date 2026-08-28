@@ -22,11 +22,22 @@ binds every credential to that hostname, permanently. Move from
 stops working** — not "needs re-approval", stops existing as far as the browser
 is concerned.
 
-There is a way back in, which is the only reason this is survivable: accounts
-also have a five-digit PIN, so a user signs in with address + PIN on the new
-domain and registers a fresh passkey. But anyone who only ever used a passkey
-and does not remember setting a PIN is locked out, and they will read that as
-the app being broken.
+Nobody is permanently locked out, which is the only reason this is survivable —
+but the way back in is worth understanding before you rely on it.
+
+Someone who set a five-digit PIN signs in with address + PIN on the new domain
+and enrols a fresh passkey. Someone who *only* ever used a passkey has no PIN,
+and the sign-in form is going to ask for one they never chose. They get back in
+by typing their address and any new PIN: `createPinUser` adds a PIN to an
+account that has none rather than refusing. So it works, and it works because
+of a hole that is already documented in `session.ts` — while email codes are
+off, nothing proves an address belongs to whoever typed it, so *anyone* can
+claim any PIN-less account that way.
+
+That hole is pre-existing and unrelated to domains. It matters here only
+because a domain move is the event that pushes every passkey-only user through
+it at once, and each of them will experience it as "the app forgot me and then
+asked me to invent a PIN".
 
 So:
 
