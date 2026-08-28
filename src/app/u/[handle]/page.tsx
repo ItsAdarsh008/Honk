@@ -4,6 +4,7 @@ import { getOptionalUser } from "@/lib/auth/current";
 import { getCurrentTermCode, getProfileByHandle, getSharedGapsWith } from "@/lib/overlap/queries";
 import { campusNow, formatDuration, formatRange, weekdayName } from "@/lib/time";
 import { ProfileActions } from "@/components/ProfileActions";
+import { schoolOrDefault } from "@/lib/schools";
 
 export const metadata: Metadata = { title: "Profile" };
 export const dynamic = "force-dynamic";
@@ -31,12 +32,25 @@ export default async function ProfilePage({
     <div className="space-y-8">
       <header className="space-y-2">
         <h1 className="text-[26px] font-semibold tracking-[-0.02em]">{name}</h1>
-        <p className="mono text-[13px] text-[var(--ink-faint)]">@{profile.handle}</p>
-        {profile.sharedSectionCount > 0 && (
+        <p className="mono text-[13px] text-[var(--ink-faint)]">
+          @{profile.handle}
+          {profile.schoolId !== user.schoolId && (
+            <span className="ml-1.5 text-[var(--ink-soft)]">
+              {schoolOrDefault(profile.schoolId).name}
+            </span>
+          )}
+        </p>
+        {profile.sharedSectionCount > 0 ? (
           <p className="text-[15px] text-[var(--ink-soft)]">
             You're in {profile.sharedSectionCount}{" "}
             {profile.sharedSectionCount === 1 ? "class" : "classes"} together.
           </p>
+        ) : (
+          profile.schoolId !== user.schoolId && (
+            <p className="text-[15px] text-[var(--ink-soft)]">
+              Different universities, so no shared classes — but free time still lines up.
+            </p>
+          )
         )}
       </header>
 
@@ -46,7 +60,14 @@ export default async function ProfilePage({
         <h2 className="section-label">When you're both free</h2>
         {week === null ? (
           <p className="text-[15px] leading-relaxed text-[var(--ink-soft)]">
-            Shared free time shows up once you've both added each other.
+            {/*
+              Two different reasons for the same null, and telling somebody to
+              add a friend they have already added is the kind of small wrong
+              thing that makes an app feel broken.
+            */}
+            {profile.relationship === "friends"
+              ? "One of you hasn't got a schedule saved yet, so there is nothing to line up."
+              : "Shared free time shows up once you've both added each other."}
           </p>
         ) : (
           <SharedWeek week={week} today={now.weekday} />

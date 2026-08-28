@@ -1,5 +1,5 @@
 /**
- * Sign-in: `@uwaterloo.ca` gating, six-digit codes, database-backed sessions.
+ * Sign-in: school-address gating, six-digit codes, database-backed sessions.
  *
  * Codes and session tokens are only ever stored as SHA-256 hashes, so a dump
  * of the database does not let anyone sign in as somebody else.
@@ -11,6 +11,7 @@ import { cookies } from "next/headers";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb, type Db } from "../db";
 import { loginCodes, sessions, users, type User } from "../db/schema";
+import { DEFAULT_SCHOOL_ID, parseSchoolAddress, type School } from "../schools";
 import { lockoutMinutes } from "./pin";
 
 export const SESSION_COOKIE = "honk_session";
@@ -40,30 +41,56 @@ export const RATE_LIMIT_PER_EMAIL = 5;
 export const RATE_LIMIT_PER_IP = 20;
 const RATE_WINDOW_MINUTES = 60;
 
-const ALLOWED_DOMAINS = ["uwaterloo.ca", "edu.uwaterloo.ca"] as const;
-
 /* ------------------------------------------------------------------ *
  * Email
  * ------------------------------------------------------------------ */
 
 /**
- * Lower-case, trimmed, and with `edu.uwaterloo.ca` folded onto `uwaterloo.ca`
- * so the same person cannot end up with two accounts. Returns null for
- * anything that is not a Waterloo address.
+ * What an address turned out to be.
+ *
+ * Three outcomes, not two, and the third is the whole reason this is not a
+ * boolean. Somebody typing `me@queensu.ca` into the sign-in box is the
+ * highest-intent visitor Honk will ever get, and telling them "that isn't a
+ * valid address" is both false and the fastest way to lose them. They get told
+ * Honk knows Queen's and is not there yet, and are offered the chance to be
+ * the person who changes that.
  */
-export function normalizeEmail(raw: string): string | null {
-  const trimmed = raw.trim().toLowerCase();
-  if (!trimmed || trimmed.length > 254) return null;
-  // One @, a non-empty local part, no whitespace.
-  const match = /^([a-z0-9._%+-]+)@([a-z0-9.-]+)$/.exec(trimmed);
-  if (!match) return null;
-  const [, local, domain] = match;
-  if (!ALLOWED_DOMAINS.includes(domain as (typeof ALLOWED_DOMAINS)[number])) return null;
-  return `${local}@uwaterloo.ca`;
+export type AddressCheck =
+  | { ok: true; email: string; school: School }
+  | { ok: false; reason: "not_a_school" }
+  | { ok: false; reason: "not_live"; school: School };
+
+export function checkAddress(raw: string): AddressCheck {
+  const parsed = parseSchoolAddress(raw);
+  if (!parsed) return { ok: false, reason: "not_a_school" };
+  if (parsed.school.status !== "live") return { ok: false, reason: "not_live", school: parsed.school };
+  return { ok: true, email: parsed.email, school: parsed.school };
 }
 
-export function isWaterlooEmail(raw: string): boolean {
-  return normalizeEmail(raw) !== null;
+/**
+ * Lower-case, trimmed, and folded onto the school's canonical domain so the
+ * same person cannot end up with two accounts — `edu.uwaterloo.ca` onto
+ * `uwaterloo.ca`, `my.yorku.ca` onto `yorku.ca`. Null for anything that is not
+ * an address at a school Honk is live at.
+ */
+export function normalizeEmail(raw: string): string | null {
+  const checked = checkAddress(raw);
+  return checked.ok ? checked.email : null;
+}
+
+/** The school id to stamp on a new account. Null when the address is no good. */
+export function schoolIdForEmail(raw: string): string | null {
+  const checked = checkAddress(raw);
+  return checked.ok ? checked.school.id : null;
+}
+
+/**
+ * The same, for the account-creation paths, which have already established the
+ * address is good. Falls back to Waterloo rather than throwing: a row with the
+ * wrong school is recoverable, and a sign-up that 500s is not.
+ */
+function schoolIdFor(email: string): string {
+  return schoolIdForEmail(email) ?? DEFAULT_SCHOOL_ID;
 }
 
 /* ------------------------------------------------------------------ *
@@ -198,7 +225,10 @@ export async function verifyLoginCode(
     return { ok: true, user: existing, isNewUser: false };
   }
 
-  const [created] = await db.insert(users).values({ email, verifiedAt: new Date() }).returning();
+  const [created] = await db
+    .insert(users)
+    .values({ email, schoolId: schoolIdFor(email), verifiedAt: new Date() })
+    .returning();
   return { ok: true, user: created, isNewUser: true };
 }
 
@@ -353,6 +383,8 @@ export async function findOrCreateEntraUser(
     .insert(users)
     .values({
       email: identity.email,
+      // The Entra path runs against Waterloo tenant and nobody else.
+      schoolId: schoolIdFor(identity.email),
       entraOid: identity.oid,
       // Entra hands us a real name; it is still editable on the profile step.
       displayName: identity.name,
@@ -392,7 +424,7 @@ export async function findOrCreatePasskeyUser(email: string, db: Db = getDb()): 
   if (existing) return existing;
   const [created] = await db
     .insert(users)
-    .values({ email, verifiedAt: new Date() })
+    .values({ email, schoolId: schoolIdFor(email), verifiedAt: new Date() })
     .returning();
   return created;
 }
@@ -445,7 +477,7 @@ export async function createPinUser(
 
   const [created] = await db
     .insert(users)
-    .values({ email, pinHash, verifiedAt: new Date() })
+    .values({ email, pinHash, schoolId: schoolIdFor(email), verifiedAt: new Date() })
     .returning();
   return { ok: true, user: created };
 }

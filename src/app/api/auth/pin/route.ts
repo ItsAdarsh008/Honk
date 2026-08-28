@@ -1,4 +1,4 @@
-import { fail, json, readJson, requireDatabase } from "@/app/api/_lib";
+import { fail, json, readAddress, readJson, requireDatabase } from "@/app/api/_lib";
 import { checkPin, hashPin, PIN_MESSAGES, verifyPin } from "@/lib/auth/pin";
 import {
   clearFailedLogins,
@@ -7,7 +7,6 @@ import {
   findUserForSignIn,
   hasProfile,
   lockoutRemaining,
-  normalizeEmail,
   recordFailedLogin,
 } from "@/lib/auth/session";
 
@@ -28,12 +27,10 @@ export async function POST(request: Request) {
   if (unavailable) return unavailable;
 
   const body = await readJson<{ email?: string; pin?: string }>(request);
-  const email = normalizeEmail(body?.email ?? "");
+  const address = readAddress(body?.email);
+  if (!address.ok) return address.response;
+  const email = address.email;
   const pin = body?.pin ?? "";
-
-  if (!email) {
-    return fail("Honk is Waterloo-only, so this needs to be a @uwaterloo.ca address.");
-  }
 
   const existing = await findUserForSignIn(email);
 

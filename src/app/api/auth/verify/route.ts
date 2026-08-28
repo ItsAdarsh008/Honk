@@ -1,5 +1,5 @@
-import { fail, json, readJson, requireDatabase } from "@/app/api/_lib";
-import { createSession, hasProfile, normalizeEmail, verifyLoginCode } from "@/lib/auth/session";
+import { fail, json, readAddress, readJson, requireDatabase } from "@/app/api/_lib";
+import { createSession, hasProfile, verifyLoginCode } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
@@ -12,10 +12,10 @@ const MESSAGES: Record<string, string> = {
 
 export async function POST(request: Request) {
   const body = await readJson<{ email?: string; code?: string }>(request);
-  const email = normalizeEmail(body?.email ?? "");
+  const address = readAddress(body?.email);
+  if (!address.ok) return address.response;
+  const email = address.email;
   const code = (body?.code ?? "").replace(/\D/g, "");
-
-  if (!email) return fail("That isn't a @uwaterloo.ca address.");
   if (code.length !== 6) return fail("A code is six digits.");
 
   const unavailable = requireDatabase();

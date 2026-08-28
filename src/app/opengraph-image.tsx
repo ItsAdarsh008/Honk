@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { GooseMark } from "@/components/GooseMark";
 import { GOOSE_LIGHT } from "@/lib/goose";
+import { liveSchoolCount } from "@/lib/schools";
 
 /**
  * The link preview. This is how Honk actually spreads — pasted into iMessage
@@ -8,7 +9,7 @@ import { GOOSE_LIGHT } from "@/lib/goose";
  * the goose in clay, pastel blocks standing in for a week.
  */
 
-export const alt = "Honk — paste your Quest schedule, see who's in your classes";
+export const alt = "Honk — paste your class schedule, see who's in your classes";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -59,8 +60,13 @@ export default function OpengraphImage() {
             <span>See who else is in it.</span>
           </div>
 
+          {/*
+            This card is the most-shared thing Honk has — it is what every
+            invite link renders as. Naming one university on it told four
+            fifths of the people receiving one that the app was not for them.
+          */}
           <span style={{ marginTop: 28, fontSize: 27, color: "#75726A" }}>
-            University of Waterloo
+            {liveSchoolCount()} Canadian universities
           </span>
         </div>
 

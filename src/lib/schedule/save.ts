@@ -4,17 +4,22 @@ import "server-only";
  * Persist a parsed schedule.
  *
  * Course and section rows are **shared**, not copied per user: two students in
- * the same lecture end up pointing at the same `sections` row, keyed on
- * (term_code, class_number) which Quest guarantees unique. That is what makes
- * the overlap query an index lookup, and it means one person's paste improves
- * the data for everyone — a corrected room number propagates.
+ * the same lecture end up pointing at the same `sections` row. That is what
+ * makes the classmate query an index lookup, and it means one person's paste
+ * improves the data for everyone — a corrected room number propagates.
+ *
+ * Shared *within a school*. Every course and section row carries the school
+ * that owns it, and nothing here ever writes or reads across that line: a York
+ * `ECON 1000` and a Guelph-Humber `ECON 1000` are two rows that happen to have
+ * the same name. Cross-campus friends still see each other's free time, which
+ * is computed from meetings rather than from shared rows.
  */
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "../db";
 import { courses, enrollments, meetings, sections, terms } from "../db/schema";
 import { termName } from "../time";
-import type { ParsedCourse, ParseResult } from "../quest/parse";
+import { sectionKeyFor, type ParsedCourse, type ParseResult } from "./types";
 
 export interface SaveResult {
   termCode: string;
@@ -29,6 +34,7 @@ export interface SaveResult {
  */
 export async function saveSchedule(
   userId: string,
+  schoolId: string,
   parsed: Pick<ParseResult, "courses" | "termCode">,
   db: Db = getDb(),
 ): Promise<SaveResult> {
@@ -42,14 +48,16 @@ export async function saveSchedule(
   let meetingCount = 0;
 
   for (const course of parsed.courses) {
-    const courseId = await upsertCourse(course, db);
+    const courseId = await upsertCourse(schoolId, course, db);
 
     for (const section of course.sections) {
       const [sectionRow] = await db
         .insert(sections)
         .values({
+          schoolId,
           courseId,
           termCode,
+          sectionKey: sectionKeyFor(course.subject, course.catalog, section),
           classNumber: section.classNumber,
           sectionCode: section.sectionCode,
           component: section.component,
@@ -58,12 +66,13 @@ export async function saveSchedule(
           endDate: section.endDate,
         })
         .onConflictDoUpdate({
-          target: [sections.termCode, sections.classNumber],
+          target: [sections.schoolId, sections.termCode, sections.sectionKey],
           set: {
             // A later paste fills in what an earlier one left blank, but never
             // blanks out something already known.
             sectionCode: section.sectionCode,
             component: section.component,
+            classNumber: sql`coalesce(${section.classNumber ?? null}, ${sections.classNumber})`,
             instructor: sql`coalesce(${section.instructor ?? null}, ${sections.instructor})`,
             startDate: sql`coalesce(${section.startDate ?? null}, ${sections.startDate})`,
             endDate: sql`coalesce(${section.endDate ?? null}, ${sections.endDate})`,
@@ -112,12 +121,17 @@ export async function saveSchedule(
   };
 }
 
-async function upsertCourse(course: ParsedCourse, db: Db): Promise<number> {
+async function upsertCourse(schoolId: string, course: ParsedCourse, db: Db): Promise<number> {
   const [row] = await db
     .insert(courses)
-    .values({ subject: course.subject, catalog: course.catalog, title: course.title })
+    .values({
+      schoolId,
+      subject: course.subject,
+      catalog: course.catalog,
+      title: course.title,
+    })
     .onConflictDoUpdate({
-      target: [courses.subject, courses.catalog],
+      target: [courses.schoolId, courses.subject, courses.catalog],
       set: { title: sql`coalesce(${course.title ?? null}, ${courses.title})` },
     })
     .returning({ id: courses.id });

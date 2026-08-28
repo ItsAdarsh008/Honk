@@ -21,6 +21,8 @@ export interface PublicProfile {
   id: string;
   handle: string | null;
   displayName: string | null;
+  /** Which university, so a cross-campus name can be labelled as one. */
+  schoolId: string;
 }
 
 export interface FriendRequest {
@@ -39,6 +41,7 @@ const PUBLIC_COLUMNS = {
   id: users.id,
   handle: users.handle,
   displayName: users.displayName,
+  schoolId: users.schoolId,
 };
 
 function pairWhere(a: string, b: string) {
@@ -187,9 +190,62 @@ export async function relationshipWith(
   if (userId === otherId) return "none";
   const row = await getRow(db, userId, otherId);
   if (!row) return "none";
+  return stateOf(row, userId);
+}
+
+/** The one place the stored row is turned into what one side of it sees. */
+function stateOf(
+  row: { status: FriendshipStatus; blockedById: string | null; requesterId: string },
+  userId: string,
+): RelationshipState {
   if (row.status === "blocked") return row.blockedById === userId ? "blocked" : "none";
   if (row.status === "accepted") return "friends";
   return row.requesterId === userId ? "request_sent" : "request_received";
+}
+
+/**
+ * The same question asked about many people at once.
+ *
+ * `relationshipWith` is one query, which is fine for a profile page and was
+ * quietly catastrophic for a class roster: the caller looped it over every
+ * person in the section, so a three-hundred-person first-year lecture meant
+ * three hundred round trips to Postgres to render one list. That is the one
+ * query path that gets slower exactly as Honk gets more popular, which is the
+ * worst possible shape for it to have.
+ *
+ * One query, whatever the size of the room. Anyone with no row at all is
+ * simply absent from the map, which callers read as "none".
+ */
+export async function relationshipsWith(
+  userId: string,
+  otherIds: string[],
+  db: Db = getDb(),
+): Promise<Map<string, RelationshipState>> {
+  const out = new Map<string, RelationshipState>();
+  const ids = otherIds.filter((id) => id !== userId);
+  if (!ids.length) return out;
+
+  const rows = await db
+    .select({
+      userAId: friendships.userAId,
+      userBId: friendships.userBId,
+      status: friendships.status,
+      blockedById: friendships.blockedById,
+      requesterId: friendships.requesterId,
+    })
+    .from(friendships)
+    .where(
+      or(
+        and(eq(friendships.userAId, userId), inArray(friendships.userBId, ids)),
+        and(eq(friendships.userBId, userId), inArray(friendships.userAId, ids)),
+      ),
+    );
+
+  for (const row of rows) {
+    const otherId = row.userAId === userId ? row.userBId : row.userAId;
+    out.set(otherId, stateOf(row, userId));
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ *

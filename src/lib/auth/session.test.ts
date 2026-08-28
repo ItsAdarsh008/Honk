@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateCode, hashCode, isWaterlooEmail, normalizeEmail, normalizeHandle } from "./session";
+import { checkAddress, generateCode, hashCode, normalizeEmail, normalizeHandle } from "./session";
 
 describe("normalizeEmail", () => {
   it("accepts a Waterloo address", () => {
@@ -14,10 +14,10 @@ describe("normalizeEmail", () => {
     expect(normalizeEmail("jdoe@edu.uwaterloo.ca")).toBe("jdoe@uwaterloo.ca");
   });
 
-  it("rejects everything that is not Waterloo", () => {
+  it("rejects an address at no school Honk knows", () => {
     expect(normalizeEmail("jdoe@gmail.com")).toBeNull();
     expect(normalizeEmail("jdoe@laurier.ca")).toBeNull();
-    expect(normalizeEmail("jdoe@utoronto.ca")).toBeNull();
+    expect(normalizeEmail("jdoe@dal.ca")).toBeNull();
   });
 
   it("rejects a lookalike domain", () => {
@@ -34,9 +34,29 @@ describe("normalizeEmail", () => {
     expect(normalizeEmail(`${"a".repeat(300)}@uwaterloo.ca`)).toBeNull();
   });
 
-  it("agrees with isWaterlooEmail", () => {
-    expect(isWaterlooEmail("jdoe@uwaterloo.ca")).toBe(true);
-    expect(isWaterlooEmail("jdoe@gmail.com")).toBe(false);
+  it("accepts every school Honk is live at, and folds subdomains", () => {
+    expect(normalizeEmail("jdoe@yorku.ca")).toBe("jdoe@yorku.ca");
+    expect(normalizeEmail("jdoe@my.yorku.ca")).toBe("jdoe@yorku.ca");
+    expect(normalizeEmail("jdoe@mcmaster.ca")).toBe("jdoe@mcmaster.ca");
+    expect(normalizeEmail("jdoe@brocku.ca")).toBe("jdoe@brocku.ca");
+    expect(normalizeEmail("jdoe@guelphhumber.ca")).toBe("jdoe@guelphhumber.ca");
+  });
+
+  it("tells a school it has not launched at apart from one it does not know", () => {
+    // The difference the sign-in screen turns into an invitation rather than
+    // a red line under the box.
+    const dal = checkAddress("jdoe@dal.ca");
+    expect(dal.ok).toBe(false);
+    expect(dal.ok === false && dal.reason).toBe("not_live");
+    expect(dal.ok === false && dal.reason === "not_live" && dal.school.short).toBe("Dalhousie");
+
+    const gmail = checkAddress("jdoe@gmail.com");
+    expect(gmail.ok === false && gmail.reason).toBe("not_a_school");
+  });
+
+  it("refuses an address at a school that is only in the beta list", () => {
+    expect(normalizeEmail("jdoe@dal.ca")).toBeNull();
+    expect(normalizeEmail("jdoe@gmail.com")).toBeNull();
   });
 });
 

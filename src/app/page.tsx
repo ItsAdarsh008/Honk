@@ -4,6 +4,7 @@ import { PasteFlow } from "@/components/PasteFlow";
 import { getOptionalUser } from "@/lib/auth/current";
 import { getCurrentTermCode } from "@/lib/overlap/queries";
 import { getVisibleUserCount } from "@/lib/stats";
+import { liveSchoolSummary } from "@/lib/schools";
 import { hasDatabase } from "@/lib/db";
 
 /**
@@ -30,11 +31,18 @@ export default async function LandingPage() {
           See who else is in it.
         </h1>
         <p className="max-w-lg text-[16px] leading-relaxed text-[var(--ink-soft)] sm:text-[17px]">
-          Honk reads your Quest schedule, lays out your week, and shows you who you share
-          classes with — and when you and your friends are free at the same time.
+          Honk reads your class schedule, lays out your week, and shows you who you share
+          classes with — and when you and your friends are free at the same time, wherever
+          they go.
         </p>
         <div className="space-y-1 text-[14px] text-[var(--ink-faint)]">
-          <p>Waterloo only. No account needed to see your week.</p>
+          <p>
+            {liveSchoolSummary()}.{" "}
+            <Link href="/universities" className="underline-offset-2 hover:text-[var(--clay)] hover:underline">
+              Not yours?
+            </Link>{" "}
+            No account needed to see your week.
+          </p>
           {userCount !== null && (
             <p>
               <span className="mono text-[var(--ink-soft)]">
@@ -47,7 +55,7 @@ export default async function LandingPage() {
       </section>
 
       <section className="card p-5 sm:p-6">
-        <PasteFlow signedIn={Boolean(user)} />
+        <PasteFlow signedIn={Boolean(user)} schoolId={user?.schoolId ?? null} />
       </section>
 
       <section className="space-y-3">
@@ -66,7 +74,8 @@ export default async function LandingPage() {
             },
             {
               term: "When you're both free",
-              detail: "Overlapping gaps with the friends you've added. Nobody else.",
+              detail:
+                "Overlapping gaps with the friends you've added, at your school or another one. Nobody else.",
             },
             {
               term: "Your week, laid out",

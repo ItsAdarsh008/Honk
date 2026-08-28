@@ -7,25 +7,34 @@
  * before the user has seen what was extracted and chosen to continue. The
  * review step appears the moment a paste parses — no "Continue" button between
  * pasting and the payoff.
+ *
+ * The school decides which instructions are printed and which parser is tried
+ * first. It does not decide what can be pasted: both parsers run on every
+ * paste and the better reading wins, so somebody who picked the wrong pill or
+ * pasted from an unexpected page still gets their week.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { parseQuestSchedule, type ParseResult } from "@/lib/quest/parse";
+import { parseSchedule } from "@/lib/schedule/parse";
+import type { ParseResult } from "@/lib/schedule/types";
 import { savePending, clearPending } from "@/lib/pending";
 import { termName } from "@/lib/time";
 import { isHandheld } from "@/lib/device";
 import { assignCourseColors } from "@/lib/colors";
+import { DEFAULT_SCHOOL_ID, schoolOrDefault } from "@/lib/schools";
+import { readSchoolChoice, saveSchoolChoice } from "@/lib/school-choice";
 import { ScheduleGrid, type GridMeeting } from "./ScheduleGrid";
 import { CourseList } from "./CourseList";
+import { SchoolPicker } from "./SchoolPicker";
 
 interface Props {
   signedIn: boolean;
-  /** Where to go once the schedule is saved. */
-  onSaved?: () => void;
+  /** The account's school. Null when signed out, and then the picker decides. */
+  schoolId?: string | null;
 }
 
-export function PasteFlow({ signedIn }: Props) {
+export function PasteFlow({ signedIn, schoolId = null }: Props) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
   const [result, setResult] = useState<ParseResult | null>(null);
@@ -33,21 +42,46 @@ export function PasteFlow({ signedIn }: Props) {
   const [error, setError] = useState<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const [handheld, setHandheld] = useState(false);
+  const [chosen, setChosen] = useState<string>(schoolId ?? DEFAULT_SCHOOL_ID);
+
+  const school = useMemo(() => schoolOrDefault(schoolId ?? chosen), [schoolId, chosen]);
 
   useEffect(() => {
     setHandheld(isHandheld(navigator.userAgent ?? "", navigator.maxTouchPoints ?? 0));
+    // Only when signed out; an account's school is not the browser's to change.
+    if (!schoolId) {
+      const remembered = readSchoolChoice();
+      if (remembered) setChosen(remembered);
+    }
+  }, [schoolId]);
+
+  const pickSchool = useCallback((id: string) => {
+    setChosen(id);
+    saveSchoolChoice(id);
   }, []);
 
-  const handleChange = useCallback((value: string) => {
-    setRaw(value);
-    setError(null);
-    if (value.trim().length < 20) {
-      setResult(null);
-      return;
-    }
-    const parsed = parseQuestSchedule(value);
-    setResult(parsed.courses.length ? parsed : null);
-  }, []);
+  const parse = useCallback(
+    (value: string) =>
+      parseSchedule(value, {
+        schoolId: school.id,
+        today: new Date().toISOString().slice(0, 10),
+      }),
+    [school.id],
+  );
+
+  const handleChange = useCallback(
+    (value: string) => {
+      setRaw(value);
+      setError(null);
+      if (value.trim().length < 20) {
+        setResult(null);
+        return;
+      }
+      const parsed = parse(value);
+      setResult(parsed.courses.length ? parsed : null);
+    },
+    [parse],
+  );
 
   const reset = useCallback(() => {
     setRaw("");
@@ -106,9 +140,13 @@ export function PasteFlow({ signedIn }: Props) {
   const looksLikeAttempt = raw.trim().length >= 20;
 
   return (
-    <div className="rise">
+    <div className="rise space-y-4">
+      {/* Signed in, the school is settled and asking again could only get it wrong. */}
+      {!signedIn && <SchoolPicker value={school.id} onChange={pickSchool} />}
+
+      <div>
       <label htmlFor="quest-paste" className="section-label">
-        Paste from Quest
+        Paste from {school.guide?.portal ?? "your portal"}
       </label>
       <textarea
         id="quest-paste"
@@ -118,31 +156,55 @@ export function PasteFlow({ signedIn }: Props) {
         spellCheck={false}
         rows={7}
         className="field mt-2 resize-y font-mono text-[13px] leading-relaxed"
-        placeholder="CS 135 - Designing Functional Programs&#10;4280   001   LEC   MWF 10:30AM-11:20AM   MC 4020"
+        placeholder={
+          school.parser === "peoplesoft"
+            ? "CS 135 - Designing Functional Programs\n4280   001   LEC   MWF 10:30AM-11:20AM   MC 4020"
+            : "ECON 1P92 D2 - Principles of Macroeconomics\nLEC  Mon, Wed  2:00 PM - 3:30 PM  TH 247"
+        }
         aria-describedby="paste-help"
       />
 
       {looksLikeAttempt && (
         <p className="mt-3 text-[14px] text-[var(--ink-soft)]">
-          Nothing readable in there yet. Make sure you copied the whole List View page,
-          headings and all.
+          Nothing readable in there yet. Make sure you copied the whole page, headings and
+          all — and that the right school is picked above.
         </p>
       )}
 
       <div id="paste-help" className="mt-6">
         <p className="section-label">How to get it</p>
         <ol className="mt-3 space-y-2.5">
-          {[
-            "Open Quest and go to Enroll → My Class Schedule.",
-            "Switch to List View.",
-            "Select the whole page and copy it, then paste it above.",
-          ].map((step, i) => (
+          {(school.guide?.steps ?? []).map((step, i) => (
             <li key={step} className="flex gap-3 text-[15px] text-[var(--ink-soft)]">
               <span className="mono mt-0.5 text-[11px] text-[var(--ink-faint)]">{i + 1}</span>
               <span>{step}</span>
             </li>
           ))}
         </ol>
+        {school.guide?.note && (
+          <p className="mt-3 text-[13px] leading-relaxed text-[var(--ink-faint)]">
+            {school.guide.note}
+          </p>
+        )}
+        {/*
+          The paste screen is where beta stops being a label and starts being a
+          risk somebody is taking, so it is said here rather than only on the
+          universities page — and said as what it actually is.
+        */}
+        {school.beta && (
+          <p className="mt-4 rounded-[10px] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2.5 text-[13px] leading-relaxed text-[var(--ink-soft)]">
+            <span className="chip mr-1.5 align-[1px]">beta</span>
+            Honk has not read a real {school.short} schedule yet. Check the week it shows
+            you before saving — if a class is missing or wrong,{" "}
+            <a
+              href="mailto:adarshthoduvakkal@gmail.com?subject=Honk%20read%20my%20schedule%20wrong"
+              className="font-medium text-[var(--clay)] underline-offset-2 hover:underline"
+            >
+              send me the paste
+            </a>{" "}
+            and it gets fixed.
+          </p>
+        )}
         {/*
           Rendered after mount, never during: the server cannot know what this
           is, and defaulting to false means a laptop never flashes a line
@@ -151,12 +213,13 @@ export function PasteFlow({ signedIn }: Props) {
         {handheld && (
           <p className="mt-4 rounded-[10px] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2.5 text-[13px] leading-relaxed text-[var(--ink-soft)]">
             <strong className="font-semibold text-[var(--ink)]">This part needs a laptop.</strong>{" "}
-            Quest&rsquo;s mobile site has no class schedule page, so there is nothing to copy
-            from a phone. Once your schedule is in, Honk works fine here.
+            {school.guide?.portal ?? "Your portal"} has no class schedule page on mobile, so
+            there is nothing to copy from a phone. Once your schedule is in, Honk works fine
+            here.
           </p>
         )}
       </div>
-
+      </div>
     </div>
   );
 }
@@ -247,8 +310,8 @@ function ReviewStep({
 
       {!signedIn && (
         <p className="text-[14px] text-[var(--ink-soft)]">
-          Saving needs a <span className="mono">@uwaterloo.ca</span> address and a passkey —
-          Face ID or your screen lock. About twenty seconds, with nothing to wait for.
+          Saving needs a school address and a passkey — Face ID or your screen lock. About
+          twenty seconds, with nothing to wait for.
         </p>
       )}
     </div>

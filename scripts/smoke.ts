@@ -102,7 +102,7 @@ async function main() {
     "footer credit link present",
   );
 
-  // ---- the Waterloo gate ----------------------------------------------
+  // ---- the school gate ------------------------------------------------
   const json = { "content-type": "application/json" };
 
   // Whether persistence is configured, asked of a route that sends nothing.
@@ -116,7 +116,7 @@ async function main() {
     headers: json,
     body: JSON.stringify({ email: "someone@gmail.com" }),
   });
-  record(outsider.status === 400, "non-Waterloo email is refused", `${outsider.status}`);
+  record(outsider.status === 400, "a non-university email is refused", `${outsider.status}`);
 
   const lookalike = await get("/api/auth/request-code", {
     method: "POST",
@@ -124,6 +124,32 @@ async function main() {
     body: JSON.stringify({ email: "a@uwaterloo.ca.evil.com" }),
   });
   record(lookalike.status === 400, "lookalike domain is refused", `${lookalike.status}`);
+
+  // A school Honk knows and has not launched at gets its own answer — 403 with
+  // the school named — rather than the flat refusal an outsider gets. This is
+  // the beta funnel, and a regression here is silent: sign-in still "works".
+  const waiting = await get("/api/auth/request-code", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({ email: "someone@queensu.ca" }),
+  });
+  const waitingBody = (await waiting.json().catch(() => ({}))) as {
+    reason?: string;
+    school?: { id?: string };
+  };
+  record(
+    waiting.status === 403 && waitingBody.reason === "school_not_live" && waitingBody.school?.id === "queens",
+    "a school on the waitlist is offered the beta",
+    `${waiting.status} ${waitingBody.reason ?? ""}`,
+  );
+
+  const universities = await get("/universities");
+  const universitiesHtml = await universities.text();
+  record(
+    universities.status === 200 && universitiesHtml.includes("adarshthoduvakkal@gmail.com"),
+    "the universities page is up, with the contact address on it",
+    `${universities.status}`,
+  );
 
   // Accepting an address *sends a real email*. Against a made-up @uwaterloo.ca
   // that is a hard bounce, and a handful of those on a young domain is enough
@@ -133,11 +159,11 @@ async function main() {
   const smokeEmail = process.env.SMOKE_EMAIL;
   if (!smokeEmail) {
     notes.push(
-      "SMOKE_EMAIL is unset, so the accept side of the Waterloo gate was not checked. " +
-        "Set it to a real @uwaterloo.ca inbox you can read — sending to a made-up one " +
-        "hard-bounces and damages deliverability for everybody.",
+      "SMOKE_EMAIL is unset, so the accept side of the school gate was not checked. " +
+        "Set it to a real inbox at a live school that you can read — sending to a made-up " +
+        "address hard-bounces and damages deliverability for everybody.",
     );
-    console.log("  skip  Waterloo email is accepted  — set SMOKE_EMAIL to a real inbox");
+    console.log("  skip  a school email is accepted  — set SMOKE_EMAIL to a real inbox");
   } else {
     const insider = await get("/api/auth/request-code", {
       method: "POST",
@@ -151,7 +177,7 @@ async function main() {
     }
     record(
       insider.status === 200 || insider.status === 429 || atCapacity,
-      "Waterloo email is accepted",
+      "a school email is accepted",
       `${insider.status}${atCapacity ? " (at daily cap)" : ""}`,
     );
   }

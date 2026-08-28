@@ -1,4 +1,12 @@
-/** Campus-local time helpers. Waterloo is America/Toronto year-round. */
+/**
+ * Campus-local time helpers.
+ *
+ * Every school Honk is live at is on Eastern time, so `CAMPUS_TZ` is still the
+ * right default and the only one in play today. It is no longer an assumption
+ * the code is allowed to make, though: the beta list runs to Vancouver, and a
+ * schedule read in the wrong zone is wrong in the one way nobody would catch —
+ * plausibly, by three hours.
+ */
 
 export const CAMPUS_TZ = "America/Toronto";
 
@@ -29,10 +37,41 @@ export interface CampusNow {
   minute: number;
 }
 
-/** Current weekday and minute on campus, regardless of where the server runs. */
-export function campusNow(date: Date = new Date()): CampusNow {
+/**
+ * How far a time zone is from UTC at a given instant, in minutes.
+ *
+ * Derived from `Intl` rather than a table, so daylight saving is handled by
+ * the platform and a rule change is somebody else's problem. Negative west of
+ * Greenwich: Toronto in summer is -240.
+ */
+export function tzOffsetMinutes(timeZone: string, date: Date = new Date()): number {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: CAMPUS_TZ,
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const local = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour") % 24,
+    get("minute"),
+    get("second"),
+  );
+  return Math.round((local - date.getTime()) / 60_000);
+}
+
+/** Current weekday and minute on campus, regardless of where the server runs. */
+export function campusNow(date: Date = new Date(), timeZone: string = CAMPUS_TZ): CampusNow {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
