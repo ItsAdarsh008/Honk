@@ -132,6 +132,91 @@ export function sectionKeyFor(
   return `${base}.${section.sectionCode.trim().toUpperCase()}`;
 }
 
+/** The meeting pattern, as the string that stands in for a section's identity. */
+function patternOf(section: Pick<ParsedSection, "meetings">): string {
+  return section.meetings
+    .map((m) => `${m.weekday}:${m.startMin}-${m.endMin}`)
+    .sort()
+    .join(",");
+}
+
+export interface ResolvedKeys {
+  keys: Map<ParsedSection, string>;
+  /** Sections that are the same class listed twice, and can be dropped. */
+  duplicates: Set<ParsedSection>;
+}
+
+/**
+ * Section keys for a whole schedule, with collisions settled.
+ *
+ * `sectionKeyFor` decides one section's identity in isolation, which is right
+ * until two sections in the same paste land on the same key. That used to be
+ * treated as a corrupt payload and rejected the entire schedule — a real
+ * student at York could not save a term because of it, and the message he got
+ * ("that schedule lists the same class twice") described something that was
+ * not true of his timetable.
+ *
+ * Two sections in one person's paste that share a key are one of two things,
+ * and neither is a reason to refuse the paste:
+ *
+ *  - **The same class printed twice.** Identical meeting patterns. One is
+ *    dropped; nothing is lost.
+ *  - **Two different parts of one course** the parser could not tell apart —
+ *    an unrecognised component code, or a portal that prints the same section
+ *    number against both. Their meeting patterns differ, because they meet at
+ *    different times, so the pattern is what separates them.
+ *
+ * Re-keying is applied to *every* member of a colliding group rather than to
+ * the newcomer, so the result does not depend on the order the portal happened
+ * to print them in. Two students in the same pair of components produce the
+ * same pair of keys and still land on the same shared rows.
+ */
+export function resolveSectionKeys(courses: ParsedCourse[]): ResolvedKeys {
+  const keys = new Map<ParsedSection, string>();
+  const duplicates = new Set<ParsedSection>();
+  const groups = new Map<string, Array<{ section: ParsedSection; course: ParsedCourse }>>();
+
+  for (const course of courses) {
+    for (const section of course.sections) {
+      const key = sectionKeyFor(course.subject, course.catalog, section);
+      keys.set(section, key);
+      const group = groups.get(key) ?? [];
+      group.push({ section, course });
+      groups.set(key, group);
+    }
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+
+    const seen = new Map<string, ParsedSection>();
+    for (const { section, course } of group) {
+      const pattern = patternOf(section);
+      const first = seen.get(pattern);
+      if (first) {
+        // Same key, same times: the same class, listed twice.
+        duplicates.add(section);
+        continue;
+      }
+      seen.set(pattern, section);
+      keys.set(
+        section,
+        `${sectionKeyFor(course.subject, course.catalog, section)}.@${pattern}`,
+      );
+    }
+
+    // A group that turned out to be one class repeated needs no re-keying.
+    if (seen.size === 1) {
+      for (const [, section] of seen) {
+        const course = group.find((g) => g.section === section)!.course;
+        keys.set(section, sectionKeyFor(course.subject, course.catalog, section));
+      }
+    }
+  }
+
+  return { keys, duplicates };
+}
+
 /**
  * Honk's term code: `1` + two-digit year + season digit (1 = Winter, 5 =
  * Spring/Summer, 9 = Fall). Fall 2026 is `1269`.

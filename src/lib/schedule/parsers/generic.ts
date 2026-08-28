@@ -386,16 +386,23 @@ function looksLikeCourseHeader(rest: string, cells: string[], hasTime: boolean):
 const COMPONENTS: ReadonlyArray<readonly [RegExp, string]> = [
   [/^(lec|lect|lecture|cours)$/i, "LEC"],
   [/^(tut|tutr|tutorial)$/i, "TUT"],
-  [/^(lab|labo|laboratory)$/i, "LAB"],
+  [/^(lab|labo|labs?|laboratory)$/i, "LAB"],
   [/^(sem|semr|seminar)$/i, "SEM"],
   [/^(pra|prac|practicum|prc)$/i, "PRA"],
-  [/^(stu|studio)$/i, "STU"],
-  [/^(fld|field|fieldwork)$/i, "FLD"],
-  [/^(cln|clinic|clinical)$/i, "CLN"],
+  [/^(stu|stdo|studio)$/i, "STU"],
+  [/^(fld|fldw|field|fieldwork)$/i, "FLD"],
+  [/^(cln|clin|clinic|clinical)$/i, "CLN"],
   [/^(dis|disc|discussion)$/i, "DIS"],
   [/^(wks|wksp|workshop)$/i, "WKS"],
   [/^(tst|test|exam|exm)$/i, "EXM"],
-  [/^(onl|online|async|asynchronous)$/i, "ONL"],
+  [/^(onl|onln|online|async|asynchronous)$/i, "ONL"],
+  [/^(blen|blended|hybr|hybrid)$/i, "BLN"],
+  [/^(prj|proj|project)$/i, "PRJ"],
+  [/^(thes|thesis|diss)$/i, "THE"],
+  [/^(ind|inds|independent|dirs)$/i, "IND"],
+  [/^(intg|integrative|capstone)$/i, "INT"],
+  [/^(demo|demonstration)$/i, "DEM"],
+  [/^(rec|recit|recitation)$/i, "REC"],
 ];
 
 function readComponent(token: string): string | null {
@@ -579,6 +586,8 @@ interface WorkingCourse {
 export function parseGenericSchedule(input: string, options: Options = {}): ParseResult {
   const warnings: ParseWarning[] = [];
   const courses: ParsedCourse[] = [];
+  /** By "SUBJ CATALOG", so a repeated course header rejoins its own course. */
+  const byCode = new Map<string, WorkingCourse>();
   let current: WorkingCourse | null = null;
   /** Meetings from the line just read, waiting for a room on the next one. */
   let pending: ParsedMeeting[] = [];
@@ -643,15 +652,41 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
         : null;
     if (code) {
       const { section, title } = splitTitle(code.rest, cells);
-      const course: ParsedCourse = {
-        subject: code.subject,
-        catalog: code.catalog,
-        title,
-        status: statusIn(trimmed) ?? "unknown",
-        sections: [],
-      };
-      current = { course, headerSection: section, sections: new Map() };
-      courses.push(course);
+
+      /*
+       * A course code seen twice is the same course, not a second one.
+       *
+       * York prints each required component of a course as its own block with
+       * the course code repeated above it — a lecture block and a tutorial
+       * block, both headed `AP/ECON 1000`. Starting a fresh course on the
+       * second header produced two entries for one course, whose sections then
+       * collided on identity and got the whole paste rejected with "that
+       * schedule lists the same class twice". Reported by a Schulich student
+       * whose winter term would not save; his fall term, which happened to
+       * have one component per course, was fine.
+       */
+      const existing = byCode.get(`${code.subject} ${code.catalog}`);
+      if (existing) {
+        // A later block may carry a title or a status the first one lacked.
+        existing.course.title = existing.course.title ?? title;
+        if (existing.course.status === "unknown") {
+          existing.course.status = statusIn(trimmed) ?? "unknown";
+        }
+        // Its own section code, though — this block describes a different part.
+        existing.headerSection = section ?? existing.headerSection;
+        current = existing;
+      } else {
+        const course: ParsedCourse = {
+          subject: code.subject,
+          catalog: code.catalog,
+          title,
+          status: statusIn(trimmed) ?? "unknown",
+          sections: [],
+        };
+        current = { course, headerSection: section, sections: new Map() };
+        byCode.set(`${code.subject} ${code.catalog}`, current);
+        courses.push(course);
+      }
       // A room can only ever belong to the course it was printed under.
       pending = [];
     }

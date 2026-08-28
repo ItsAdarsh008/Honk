@@ -8,7 +8,12 @@
  * student in that lecture points at.
  */
 
-import { sectionKeyFor, type ParsedCourse, type ParsedMeeting, type ParsedSection } from "./types";
+import {
+  resolveSectionKeys,
+  type ParsedCourse,
+  type ParsedMeeting,
+  type ParsedSection,
+} from "./types";
 
 export type ValidationResult =
   | { ok: true; value: { courses: ParsedCourse[]; termCode: string } }
@@ -80,7 +85,6 @@ export function validateSchedule(input: unknown): ValidationResult {
   }
 
   const courses: ParsedCourse[] = [];
-  const seenSectionKeys = new Set<string>();
 
   for (const item of raw.courses) {
     if (!item || typeof item !== "object") return { ok: false, error: "A course was malformed." };
@@ -174,19 +178,6 @@ export function validateSchedule(input: unknown): ValidationResult {
         meetings,
       };
 
-      /*
-       * One section can only appear once in a schedule. The check is on the
-       * identity the database will use, not on the class number, so it holds
-       * for the four schools that have no class numbers — and a duplicate
-       * there means the payload was hand-edited, since no portal prints the
-       * same section twice.
-       */
-      const key = sectionKeyFor(subject, catalog, section);
-      if (seenSectionKeys.has(key)) {
-        return { ok: false, error: "That schedule lists the same class twice." };
-      }
-      seenSectionKeys.add(key);
-
       sections.push(section);
     }
 
@@ -202,5 +193,21 @@ export function validateSchedule(input: unknown): ValidationResult {
     });
   }
 
-  return { ok: true, value: { courses, termCode } };
+  /*
+   * Sections that could not be told apart are settled here rather than
+   * refused. A collision used to reject the whole schedule, which is how a
+   * York student ended up unable to save a term over two components of one
+   * course that the parser read as the same section.
+   */
+  const { duplicates } = resolveSectionKeys(courses);
+  if (duplicates.size) {
+    for (const course of courses) {
+      course.sections = course.sections.filter((section) => !duplicates.has(section));
+    }
+  }
+
+  const kept = courses.filter((course) => course.sections.length > 0);
+  if (!kept.length) return { ok: false, error: "That schedule has no courses in it." };
+
+  return { ok: true, value: { courses: kept, termCode } };
 }
