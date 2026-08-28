@@ -15,6 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 import { parseDayList, parseGenericSchedule, parseTimeRange, detectDateOrder } from "./generic";
+import { sectionKeyFor } from "../types";
 
 const TODAY = "2026-09-14";
 
@@ -312,5 +313,52 @@ describe("false positives", () => {
     expect(result.courses).toHaveLength(1);
     expect(result.courses[0].sections[0].meetings).toEqual([]);
     expect(result.courses[0].sections[0].instructor).toBe("A Patel");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Section identity
+ * ------------------------------------------------------------------ */
+
+describe("section identity", () => {
+  it("uses a section code the portal actually printed", () => {
+    const section = parseGenericSchedule(
+      ["ECON 1P92 D2 - Macro", "LEC  Mon  2:00 PM - 3:30 PM  TH 247"].join("\n"),
+      { today: TODAY },
+    ).courses[0].sections[0];
+
+    expect(section.sectionCodeInferred).toBeFalsy();
+    expect(sectionKeyFor("ECON", "1P92", section)).toBe("ECON.1P92.LEC.D2");
+  });
+
+  it("keys an unnumbered section on its meeting pattern, not on a made-up code", () => {
+    /*
+     * Two different lectures of one course, neither printing a section code.
+     * Defaulting both to "01" merged them into a single shared row — which
+     * would make two people in different rooms each other's classmates, and
+     * being classmates is what lets a friend see a room.
+     */
+    const morning = parseGenericSchedule(
+      ["PSYC 1000 - Intro", "Mon 9:00 AM - 10:00 AM"].join("\n"),
+      { today: TODAY },
+    ).courses[0].sections[0];
+    const afternoon = parseGenericSchedule(
+      ["PSYC 1000 - Intro", "Mon 2:00 PM - 3:00 PM"].join("\n"),
+      { today: TODAY },
+    ).courses[0].sections[0];
+
+    expect(morning.sectionCodeInferred).toBe(true);
+    expect(morning.sectionCode).toBe("01");
+    expect(afternoon.sectionCode).toBe("01");
+    expect(sectionKeyFor("PSYC", "1000", morning)).not.toBe(
+      sectionKeyFor("PSYC", "1000", afternoon),
+    );
+  });
+
+  it("still merges two pastes of the same unnumbered lecture", () => {
+    const paste = ["PSYC 1000 - Intro", "Mon, Wed 9:00 AM - 10:00 AM"].join("\n");
+    const mine = parseGenericSchedule(paste, { today: TODAY }).courses[0].sections[0];
+    const theirs = parseGenericSchedule(paste, { today: TODAY }).courses[0].sections[0];
+    expect(sectionKeyFor("PSYC", "1000", mine)).toBe(sectionKeyFor("PSYC", "1000", theirs));
   });
 });

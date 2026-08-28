@@ -60,7 +60,14 @@ export default async function ProfilePage({
         <h2 className="section-label">When you're both free</h2>
         {week === null ? (
           <p className="text-[15px] leading-relaxed text-[var(--ink-soft)]">
-            Shared free time shows up once you've both added each other.
+            {/*
+              Two different reasons for the same null, and telling somebody to
+              add a friend they have already added is the kind of small wrong
+              thing that makes an app feel broken.
+            */}
+            {profile.relationship === "friends"
+              ? "One of you hasn't got a schedule saved yet, so there is nothing to line up."
+              : "Shared free time shows up once you've both added each other."}
           </p>
         ) : (
           <SharedWeek week={week} today={now.weekday} />

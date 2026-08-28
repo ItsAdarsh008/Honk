@@ -14,7 +14,12 @@ import { useRouter } from "next/navigation";
 import { clearPending, readPending } from "@/lib/pending";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { formatWait } from "@/lib/wait";
-import { getSchool, liveSchoolList, type School } from "@/lib/schools";
+import {
+  getSchool,
+  liveSchoolList,
+  parseSchoolAddress,
+  type School,
+} from "@/lib/schools";
 import { BringHonkHere } from "./UniversityList";
 
 type Step = "email" | "code" | "profile" | "capacity";
@@ -65,6 +70,17 @@ export function SignInFlow({
   const [waitlisted, setWaitlisted] = useState<School | null>(null);
   const [hasPending, setHasPending] = useState(false);
   const [retryMinutes, setRetryMinutes] = useState<number | null>(null);
+
+  /**
+   * Whether to offer Waterloo's own sign-in.
+   *
+   * Shown until the address says otherwise, because an empty box could still
+   * be a Waterloo student and hiding it would bury the one path that cannot be
+   * eaten by a spam filter. It disappears the moment the typed address belongs
+   * to somewhere else.
+   */
+  const showWaterlooButton =
+    !email.trim() || (parseSchoolAddress(email)?.school.id ?? "waterloo") === "waterloo";
 
   const codeRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -434,12 +450,17 @@ export function SignInFlow({
           */}
           {waitlisted && <BringHonkHere school={waitlisted} />}
 
-          {entraEnabled && (
+          {entraEnabled && showWaterlooButton && (
             <>
               {/*
                 First, not second. It is one click and it cannot be eaten by a
                 spam filter, which is the whole reason it exists — a code has to
                 survive a mail gateway that Honk does not control.
+
+                Only for Waterloo, though. This runs against Waterloo's tenant
+                and nobody else's, so offering it as the top button to a Brock
+                student is offering them a door that cannot open — and it is
+                the most prominent thing on the screen.
               */}
               <a href="/api/auth/entra/start" className="btn btn-primary w-full">
                 Sign in with Waterloo

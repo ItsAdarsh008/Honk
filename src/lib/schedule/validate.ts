@@ -164,6 +164,9 @@ export function validateSchedule(input: unknown): ValidationResult {
       const section: ParsedSection = {
         classNumber,
         sectionCode,
+        // Trusted only as a hint that identity should come from the meeting
+        // pattern instead — it can never widen what this section matches.
+        sectionCodeInferred: s.sectionCodeInferred === true,
         component,
         instructor,
         startDate,

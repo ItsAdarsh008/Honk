@@ -35,6 +35,14 @@ export interface ParsedSection {
    */
   classNumber: number | null;
   sectionCode: string;
+  /**
+   * True when the section code was not printed anywhere and had to be made up.
+   *
+   * It still renders — a card saying "LEC 01" is better than one saying "LEC"
+   * — but it must not be used to decide which section this *is*. See
+   * `sectionKeyFor`.
+   */
+  sectionCodeInferred?: boolean;
   component: string;
   instructor: string | null;
   /** ISO yyyy-mm-dd, or null when the portal said TBA. */
@@ -86,12 +94,42 @@ export interface ParseResult {
 export function sectionKeyFor(
   subject: string,
   catalog: string,
-  section: Pick<ParsedSection, "classNumber" | "component" | "sectionCode">,
+  section: Pick<
+    ParsedSection,
+    "classNumber" | "component" | "sectionCode" | "sectionCodeInferred" | "meetings"
+  >,
 ): string {
   if (section.classNumber !== null) return String(section.classNumber);
-  return [subject, catalog, section.component, section.sectionCode]
+
+  const base = [subject, catalog, section.component]
     .map((part) => part.trim().toUpperCase())
     .join(".");
+
+  /*
+   * When the portal printed no section code, the meeting pattern is the
+   * identity instead.
+   *
+   * The alternative — defaulting to "01" — quietly merges every unnumbered
+   * lecture of a course into one row. Because section rows are shared between
+   * students, that does not just mislabel something: two people in genuinely
+   * different lectures become each other's classmates, and being classmates is
+   * what lets a friend see a room. A parsing guess must never be able to widen
+   * who can see where somebody will be.
+   *
+   * The trade is real and points the safe way. Keying on the pattern means two
+   * pastes of the same lecture that disagree about one meeting row land on
+   * different keys and fail to merge, so somebody sees fewer classmates than
+   * they should. That is invisible and harmless. The other failure is neither.
+   */
+  if (section.sectionCodeInferred) {
+    const pattern = section.meetings
+      .map((m) => `${m.weekday}:${m.startMin}-${m.endMin}`)
+      .sort()
+      .join(",");
+    return `${base}.@${pattern}`;
+  }
+
+  return `${base}.${section.sectionCode.trim().toUpperCase()}`;
 }
 
 /**

@@ -47,6 +47,47 @@ rather than fail — a missed room is a null, not a crash — and the review scr
 shows the user what was read before anything saves. But the first real York
 paste will find something, and `/universities` exists to go and get one.
 
+### What a second university broke, and what is still open
+
+A pass over the assumptions that only hold at one school. Five fixed:
+
+- **Friends at another school showed as free all week.** `busyWeeksFor` filtered
+  every user by the *viewer's* term code and started everyone from an empty
+  week, so a friend whose term is coded differently matched no rows and came
+  back looking perfectly available, 8am to 10pm, every day. York's Fall/Winter
+  courses derive to the Fall code and stay there through January, so this was
+  routine rather than exotic. Everyone is now read at their own term, and
+  somebody with no schedule is left out of the results rather than invented as
+  free.
+- **The link-preview card said "University of Waterloo".** It is what every
+  invite link renders as in a DM — the one asset that reaches people who have
+  never seen Honk.
+- **The sign-in email called Honk "the class-schedule app for University of
+  Waterloo students"**, to whoever it was sent to. Dormant while codes are off.
+- **"Sign in with Waterloo" was the top button for everybody**, including the
+  four fifths of live schools it cannot work for.
+- **Unnumbered sections could merge two different lectures into one row.** The
+  generic parser defaulted a missing section code to `01`, and section rows are
+  shared, so two people in different rooms became each other's classmates —
+  which is what lets a friend see a room. An inferred code is now flagged and
+  keyed on its meeting pattern instead.
+
+Still open, and deliberately not changed:
+
+- **Handles are one global namespace.** `@adarsh` at Waterloo blocks `@adarsh`
+  at York, and the collision rate is now five times worse for someone who will
+  never meet the person holding it. Scoping handles per school would break
+  `/u/<handle>` and every invite link already sent, so it needs a decision
+  rather than a patch.
+- **The "N students have joined" counter is global.** At a school with four
+  users it reads as a thousand, which is true and misleading in the way that
+  matters — density is local. A per-school count would be more honest.
+- **Shared gaps do not know about distance.** A thirty-minute window shared with
+  someone in Hamilton is real for a phone call and useless for lunch, and it is
+  rendered identically to one shared with somebody two buildings away.
+- **The per-IP sign-in limit is 20 an hour.** Campus wifi is one NAT, so a
+  residence hits it as a group. Dormant while email codes are off.
+
 ### One manual step
 
 `scripts/migrate-schools.sql` has to be run against the live database before

@@ -594,13 +594,17 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
     sectionCode: string | null,
   ): ParsedSection => {
     const comp = component ?? "LEC";
-    const code = sectionCode ?? working.headerSection ?? "01";
+    // Neither the row nor the course header carried one, so "01" is a label
+    // rather than a fact. `sectionKeyFor` needs to know the difference.
+    const read = sectionCode ?? working.headerSection;
+    const code = read ?? "01";
     const key = `${comp}.${code}`;
     const existing = working.sections.get(key);
     if (existing) return existing;
     const section: ParsedSection = {
       classNumber: null,
       sectionCode: code.toUpperCase(),
+      sectionCodeInferred: read === null,
       component: comp,
       instructor: null,
       startDate: null,

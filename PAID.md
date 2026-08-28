@@ -144,24 +144,13 @@ rather than a broken form. Resend Pro is $20/mo for 50,000.
 
 All free, all worth more than the first upgrade.
 
-### 1. The classmates N+1 — fix this first
+### 1. ~~The classmates N+1~~ — done
 
-`getClassmates` in `src/lib/overlap/queries.ts` does:
-
-```ts
-const withRelationship = await Promise.all(
-  rows.map(async (row) => ({ ...row, relationship: await relationshipWith(userId, row.id, db) })),
-);
-```
-
-One query per classmate. In a 40-person tutorial that is 40 round trips and
-nobody notices. In a 300-person first-year lecture where most people have opted
-in, it is 300 — and it is the one query path that gets slower precisely as the
-app gets more popular, which is the worst possible shape.
-
-Fix: one `LEFT JOIN` against `friendships` on the ordered pair, resolving every
-relationship in the query that already fetches the roster. Bounded work per
-page instead of unbounded.
+`getClassmates` used to run one query per classmate: 40 round trips in a
+tutorial, 300 in a first-year lecture, and getting slower precisely as Honk got
+more popular. It now calls `relationshipsWith` in `friends.ts`, which resolves
+the whole roster in one query regardless of the size of the room. Left here
+because it is the shape to watch for, not because it still needs doing.
 
 ### 2. Deduplicate `getOptionalUser`
 
