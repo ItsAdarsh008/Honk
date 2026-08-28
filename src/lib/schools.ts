@@ -72,16 +72,16 @@ function withCopyStep(guide: PasteGuide): PasteGuide {
   return { ...guide, steps: [...guide.steps, COPY_STEP] };
 }
 
-/**
- * True of every portal here, so it is said once rather than per school.
+/*
+ * There is deliberately no standing "laptop only" line here.
  *
- * No student information system in the country renders a class schedule page
- * on a phone — they either have no mobile view or drop the schedule from it.
- * Somebody trying this on their phone will get an empty box and conclude Honk
- * does not work, which is the wrong conclusion and an expensive one.
+ * It was tried as a note under every school's steps and taken back out: on a
+ * laptop — which is where somebody following these steps already is — it tells
+ * them something they cannot act on and did not need. The warning lives in
+ * `PasteFlow`, rendered only once the browser has said it is a handheld, so it
+ * reaches exactly the people who are about to waste five minutes and nobody
+ * else.
  */
-export const LAPTOP_ONLY_NOTE =
-  "Laptop only — no student portal shows a class schedule page on a phone.";
 
 export interface School {
   id: string;
