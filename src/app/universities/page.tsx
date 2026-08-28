@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { UniversityList } from "@/components/UniversityList";
-import { LIVE_SCHOOLS, WAITLIST_SCHOOLS } from "@/lib/schools";
+import { LIVE_SCHOOLS, WAITLIST_SCHOOLS, liveSchoolCount } from "@/lib/schools";
 
 export const metadata: Metadata = {
   title: "Universities",
   description:
-    "Honk is live at five Canadian universities and looking for beta testers everywhere else. Bring it to yours.",
+    "Honk is live at ten Canadian universities and looking for beta testers everywhere else. Bring it to yours.",
 };
 
 const CONTACT = "adarshthoduvakkal@gmail.com";
@@ -26,13 +26,23 @@ const CONTACT = "adarshthoduvakkal@gmail.com";
  * blocker, and saying so is more persuasive than any amount of enthusiasm.
  */
 export default function UniversitiesPage() {
+  const proven = LIVE_SCHOOLS.filter((s) => !s.beta).map((s) => s.short);
+  const betaCount = LIVE_SCHOOLS.length - proven.length;
+  const provenList =
+    proven.length === 0
+      ? null
+      : proven.length === 1
+        ? proven[0]
+        : `${proven.slice(0, -1).join(", ")} and ${proven[proven.length - 1]}`;
+
   return (
     <div className="space-y-12">
       <section className="space-y-4">
+        {/* Counted, not typed. It was "five" for about a day. */}
         <h1 className="text-[30px] font-semibold leading-[1.15] tracking-[-0.025em] sm:text-[36px]">
-          Five universities.
+          {liveSchoolCount()} universities.
           <br />
-          Yours could be the sixth.
+          Yours could be next.
         </h1>
         <p className="max-w-lg text-[16px] leading-relaxed text-[var(--ink-soft)]">
           Honk reads your class schedule and shows you who else is in it, and when you and
@@ -48,15 +58,57 @@ export default function UniversitiesPage() {
           {LIVE_SCHOOLS.map((school) => (
             <li key={school.id} className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0">
-                <span className="block truncate text-[15px] font-medium">{school.name}</span>
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-[15px] font-medium">{school.name}</span>
+                  {school.beta && <span className="chip shrink-0">beta</span>}
+                </span>
                 <span className="mono block truncate text-[12px] text-[var(--ink-faint)]">
                   @{school.canonicalDomain}
                 </span>
               </div>
-              <span className="chip shrink-0">{school.guide?.portal ?? "live"}</span>
+              <span className="mono shrink-0 text-[12px] text-[var(--ink-faint)]">
+                {school.guide?.portal ?? "live"}
+              </span>
             </li>
           ))}
         </ul>
+
+        {/*
+          Said plainly and once, right under the list, rather than buried in a
+          footnote. Beta here has a specific meaning and a student deserves the
+          real one: it is not "unpolished", it is "nobody has proved Honk can
+          read your portal yet".
+
+          Read from the same list the tags are, so flipping a school in
+          `schools-out-of-beta.ts` cannot leave this paragraph claiming
+          something that stopped being true.
+        */}
+        {betaCount > 0 && (
+          <p className="text-[14px] leading-relaxed text-[var(--ink-soft)]">
+            {provenList ? (
+              <>
+                Everywhere except {provenList} is in{" "}
+                <strong className="font-semibold">beta</strong>.
+              </>
+            ) : (
+              <>
+                Every school here is in <strong className="font-semibold">beta</strong>.
+              </>
+            )}{" "}
+            A portal comes out of beta when a real student&rsquo;s paste has been read
+            correctly and kept as a test — until then it was built from documentation and
+            nothing more. Your week is shown to you before anything saves, so you will see
+            it if it comes out wrong, and{" "}
+            <a
+              href={`mailto:${CONTACT}?subject=${encodeURIComponent("Honk read my schedule wrong")}`}
+              className="font-medium text-[var(--clay)] underline-offset-2 hover:underline"
+            >
+              sending me the paste
+            </a>{" "}
+            is what moves a school off this list.
+          </p>
+        )}
+
         <p className="text-[14px] text-[var(--ink-soft)]">
           Got one of those addresses?{" "}
           <Link

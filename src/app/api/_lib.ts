@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { hasDatabase } from "@/lib/db";
 import { checkAddress } from "@/lib/auth/session";
-import { liveSchoolList } from "@/lib/schools";
+import { liveSchoolSummary } from "@/lib/schools";
 
 export function json<T>(body: T, status = 200) {
   return NextResponse.json(body, { status });
@@ -72,6 +72,6 @@ export function readAddress(raw: string | undefined | null): AddressResult {
 
   return {
     ok: false,
-    response: fail(`Honk needs a university email. Live at ${liveSchoolList()} so far.`),
+    response: fail(`Honk needs a university email — ${liveSchoolSummary()}. See /universities.`),
   };
 }

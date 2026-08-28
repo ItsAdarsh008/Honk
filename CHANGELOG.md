@@ -1,5 +1,32 @@
 # Changelog
 
+## Ten universities, nine of them in beta
+
+Added Laurier (LORIS), Toronto (ACORN), Western (Student Center), Queen's
+(SOLUS) and UBC (Workday), and marked everywhere except Waterloo as beta.
+
+Western and Queen's are PeopleSoft, the same product as Quest and Mosaic, so
+they get the parser with real pastes behind it rather than the tolerant one.
+UBC is the first school outside Eastern time, which turns the time-zone shift
+in `overlap/queries.ts` from dormant code into load-bearing code — a UBC
+student's 9am Monday is a Waterloo friend's noon.
+
+**The switch is `src/lib/schools-out-of-beta.ts`.** One list, one line to edit.
+Every beta tag in the app reads from it — the universities page, the paste
+screen — including the sentence explaining what beta means, so flipping a
+school cannot leave a page claiming something that stopped being true.
+
+Beta here means one specific thing, and the copy says it out loud: nobody has
+proved Honk can read that portal. Not polish, not user numbers. The bar to come
+off the list is a real paste, read correctly, kept as a test.
+
+`liveSchoolList()` had to grow up too. Naming all ten schools was fine in prose
+at five and is a mouthful now, and it was on the link-preview card — so there is
+a `liveSchoolSummary()` ("Waterloo, Laurier, Toronto and 7 more") and a
+`liveSchoolCount()` for the places that only have room for a number.
+
+---
+
 ## Five universities, and friends between them
 
 Honk was Waterloo-only by design — `SPEC.md` §2 listed other campuses as out of

@@ -187,6 +187,25 @@ export function PasteFlow({ signedIn, schoolId = null }: Props) {
           </p>
         )}
         {/*
+          The paste screen is where beta stops being a label and starts being a
+          risk somebody is taking, so it is said here rather than only on the
+          universities page — and said as what it actually is.
+        */}
+        {school.beta && (
+          <p className="mt-4 rounded-[10px] border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2.5 text-[13px] leading-relaxed text-[var(--ink-soft)]">
+            <span className="chip mr-1.5 align-[1px]">beta</span>
+            Honk has not read a real {school.short} schedule yet. Check the week it shows
+            you before saving — if a class is missing or wrong,{" "}
+            <a
+              href="mailto:adarshthoduvakkal@gmail.com?subject=Honk%20read%20my%20schedule%20wrong"
+              className="font-medium text-[var(--clay)] underline-offset-2 hover:underline"
+            >
+              send me the paste
+            </a>{" "}
+            and it gets fixed.
+          </p>
+        )}
+        {/*
           Rendered after mount, never during: the server cannot know what this
           is, and defaulting to false means a laptop never flashes a line
           telling it to go find a laptop.
