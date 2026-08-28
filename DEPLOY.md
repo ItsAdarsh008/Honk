@@ -26,7 +26,25 @@ off and why, and everything already standing.
 
 ## What is left
 
-### One thing blocking: the schools migration
+### The schools migration — done, and what it cost
+
+**Run against production on 27 August 2026.** 13 queries, one transaction, 86
+section rows backfilled, 13 users kept, both old unique constraints replaced.
+Verified afterwards: all four columns present, `section_key` NOT NULL with no
+nulls, `class_number` now nullable.
+
+Leaving the instructions below because the lesson is worth more than the steps.
+**Merging deployed the code without it, and the site was down for every account
+until it ran** — every sign-in path starts with a select on `users`, that select
+named a column that did not exist, and the route 500s. The symptom on screen is
+"That didn't work. Try again.", which is indistinguishable from a wrong PIN, so
+nobody reports it as an outage.
+
+If a change ever again adds a column the running code reads, the migration goes
+first and the merge second. There is no version of this app where those two can
+be done in the other order.
+
+### The steps, for the next time
 
 Honk now runs at five universities, and that added three columns and changed two
 unique constraints. **The database has to be migrated before this deploys**, or
@@ -47,8 +65,11 @@ fail or drop the old constraint with nothing replacing it. Run the file first.
 
 On a fresh database, skip it — `db:push` builds the right shape from scratch.
 
-This has not been run against the live database yet. It is the one step that
-needs a human at the terminal.
+`psql` is not installed on the machine this was built on, so it went through the
+Neon console's SQL editor instead — paste the file from `begin;` to `commit;`
+and press Run. The transaction wrapper is what makes that safe: a web editor
+that mangles the paste produces a syntax error and a rollback, never a
+half-applied schema.
 
 ---
 
