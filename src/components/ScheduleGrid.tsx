@@ -31,6 +31,12 @@ export interface GridMeeting {
   component: string;
   /** Stable per course, so the same class is the same colour everywhere. */
   colorIndex: number;
+  /** Present on the signed-in grid, where a block can be opened. */
+  sectionId?: number;
+  /** Everyone else in this exact section. Aggregate, so it names nobody. */
+  sharedCount?: number;
+  /** How many of those are accepted friends. The reason to look at all. */
+  friendCount?: number;
 }
 
 interface Props {
@@ -41,11 +47,25 @@ interface Props {
   showGaps?: boolean;
   /** Rooms are shown only where the viewer is entitled to see them. */
   showRooms?: boolean;
+  /**
+   * Makes each block openable. Given, blocks become buttons and the caller
+   * decides what opening one means — on /home it is "show me who is in this".
+   */
+  onSelectSection?: (sectionId: number) => void;
+  /** The section currently open, so its block can show it. */
+  selectedSectionId?: number | null;
 }
 
 const HOUR = 60;
 
-export function ScheduleGrid({ meetings, today = null, showGaps = true, showRooms = true }: Props) {
+export function ScheduleGrid({
+  meetings,
+  today = null,
+  showGaps = true,
+  showRooms = true,
+  onSelectSection,
+  selectedSectionId = null,
+}: Props) {
   const model = useMemo(() => build(meetings), [meetings]);
 
   if (!model) {
@@ -116,28 +136,73 @@ export function ScheduleGrid({ meetings, today = null, showGaps = true, showRoom
               {dayMeetings.map((meeting) => {
                 const height = ((meeting.endMin - meeting.startMin) / span) * 100;
                 const tall = meeting.endMin - meeting.startMin >= 55;
-                return (
-                  <div
-                    key={`${meeting.code}-${meeting.startMin}-${meeting.component}`}
-                    className="sched-block"
-                    style={
-                      {
-                        top: `${pct(meeting.startMin)}%`,
-                        height: `${height}%`,
-                        "--block-bg": `var(--course-${meeting.colorIndex}-bg)`,
-                      } as React.CSSProperties
-                    }
-                    title={`${meeting.code} ${meeting.component} · ${formatRange(
-                      meeting.startMin,
-                      meeting.endMin,
-                    )}${showRooms && meeting.location ? ` · ${meeting.location}` : ""}`}
-                  >
+                const openable = onSelectSection !== undefined && meeting.sectionId !== undefined;
+                const friends = meeting.friendCount ?? 0;
+                const others = meeting.sharedCount ?? 0;
+
+                /*
+                 * What the second line says, in priority order. A friend in the
+                 * room beats a room number, and a room number beats the
+                 * component — the component is the least interesting fact about
+                 * a class you are already enrolled in.
+                 */
+                const meta =
+                  friends > 0
+                    ? `${friends} friend${friends === 1 ? "" : "s"}`
+                    : others > 0
+                      ? `+${others}`
+                      : showRooms && meeting.location
+                        ? meeting.location
+                        : meeting.component;
+
+                /*
+                 * A room number earns its line only on a tall block. Who is in
+                 * the room earns it on any block — the standard lecture is
+                 * fifty minutes, which falls just under `tall`, so gating the
+                 * social line on height would hide it on most of the grid,
+                 * which is the one thing this view exists to show.
+                 */
+                const showMeta = tall || friends > 0 || others > 0;
+
+                const label = `${meeting.code} ${meeting.component} · ${formatRange(
+                  meeting.startMin,
+                  meeting.endMin,
+                )}${showRooms && meeting.location ? ` · ${meeting.location}` : ""}${
+                  others > 0 ? ` · ${others} other${others === 1 ? "" : "s"} here` : ""
+                }`;
+
+                const style = {
+                  top: `${pct(meeting.startMin)}%`,
+                  height: `${height}%`,
+                  "--block-bg": `var(--course-${meeting.colorIndex}-bg)`,
+                } as React.CSSProperties;
+
+                const inside = (
+                  <>
                     <span className="sched-block-code">{meeting.code}</span>
-                    {tall && (
-                      <span className="sched-block-meta">
-                        {showRooms && meeting.location ? meeting.location : meeting.component}
-                      </span>
-                    )}
+                    {showMeta && <span className="sched-block-meta">{meta}</span>}
+                    {friends > 0 && <span className="sched-block-dot" aria-hidden="true" />}
+                  </>
+                );
+
+                const key = `${meeting.code}-${meeting.startMin}-${meeting.component}`;
+
+                return openable ? (
+                  <button
+                    key={key}
+                    type="button"
+                    className="sched-block sched-block-open"
+                    data-selected={meeting.sectionId === selectedSectionId}
+                    style={style}
+                    title={label}
+                    aria-label={`${label}. Show who is in this class.`}
+                    onClick={() => onSelectSection!(meeting.sectionId!)}
+                  >
+                    {inside}
+                  </button>
+                ) : (
+                  <div key={key} className="sched-block" style={style} title={label}>
+                    {inside}
                   </div>
                 );
               })}

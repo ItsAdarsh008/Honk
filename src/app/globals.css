@@ -401,6 +401,37 @@ body {
   gap: 1px;
 }
 
+/* A block you can open. Same geometry; the affordance is the cursor and the
+   selected outline, so the grid does not turn into a row of buttons. */
+.sched-block-open {
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: outline-color 140ms ease;
+  outline: 1.5px solid transparent;
+  outline-offset: -1.5px;
+}
+
+.sched-block-open:hover {
+  outline-color: var(--course-edge);
+}
+
+.sched-block-open[data-selected="true"] {
+  outline-color: var(--clay);
+}
+
+/* A friend is in this room. One dot, top-right, in the accent — the only
+   thing on the grid allowed to use it besides time pressure. */
+.sched-block-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--clay);
+}
+
 .sched-block-code {
   font-family: var(--font-mono);
   font-size: 11px;
