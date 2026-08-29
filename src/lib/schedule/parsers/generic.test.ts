@@ -317,6 +317,64 @@ describe("false positives", () => {
 });
 
 /* ------------------------------------------------------------------ *
+ * Reported by a real student
+ * ------------------------------------------------------------------ */
+
+/**
+ * A Schulich student could not save his winter term: two required components
+ * of one course, and the site refused the whole paste with "that schedule
+ * lists the same class twice". His fall term, which had one component per
+ * course, saved fine.
+ *
+ * York prints each component as its own block with the course code repeated
+ * above it, and the parser started a brand-new course on the second header.
+ */
+const YORK_TWO_COMPONENTS = [
+  "Winter 2027",
+  "SB/ACTG 2010 3.00\tSection A\tIntroduction to Financial Accounting",
+  "LECT 01\tMon\t11:30 - 13:20\tSSB 108\tR Chen",
+  "SB/ACTG 2010 3.00\tSection A\tIntroduction to Financial Accounting",
+  "TUTR 02\tWed\t14:30 - 15:20\tSSB 204\tTBA",
+].join("\n");
+
+describe("a course whose components are printed as separate blocks", () => {
+  const result = parseGenericSchedule(YORK_TWO_COMPONENTS, { today: TODAY });
+
+  it("reads them as one course, not two", () => {
+    expect(result.courses).toHaveLength(1);
+    expect(`${result.courses[0].subject} ${result.courses[0].catalog}`).toBe("SB/ACTG 2010");
+  });
+
+  it("keeps both components as their own sections", () => {
+    expect(result.courses[0].sections.map((s) => s.component).sort()).toEqual(["LEC", "TUT"]);
+  });
+
+  it("gives the two components different identities", () => {
+    const [a, b] = result.courses[0].sections;
+    expect(sectionKeyFor("SB/ACTG", "2010", a)).not.toBe(sectionKeyFor("SB/ACTG", "2010", b));
+  });
+
+  it("keeps every meeting", () => {
+    expect(meetingsOf(result)).toHaveLength(2);
+  });
+});
+
+describe("component codes the registrars actually print", () => {
+  it("does not collapse an unfamiliar code onto LEC", () => {
+    // Two blocks whose components differ only by a code the table has to know.
+    const paste = [
+      "SB/MGMT 1000 3.00\tSection B\tStrategy",
+      "BLEN 01\tTue\t9:00 - 10:20\tSSB 101\tTBA",
+      "SB/MGMT 1000 3.00\tSection B\tStrategy",
+      "STDO 02\tThu\t9:00 - 10:20\tSSB 102\tTBA",
+    ].join("\n");
+    const parsed = parseGenericSchedule(paste, { today: TODAY });
+    expect(parsed.courses).toHaveLength(1);
+    expect(parsed.courses[0].sections.map((s) => s.component).sort()).toEqual(["BLN", "STU"]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
  * Section identity
  * ------------------------------------------------------------------ */
 

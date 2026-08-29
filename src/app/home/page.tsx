@@ -7,6 +7,7 @@ import { listIncomingRequests } from "@/lib/friends";
 import {
   getCurrentTermCode,
   getFreeNow,
+  getFriendsBySection,
   getFriendsWithNextGap,
   getMyClassesWithCounts,
   getMySchedule,
@@ -19,18 +20,28 @@ import {
   termName,
   weekdayShort,
 } from "@/lib/time";
-import { ClassSection } from "@/components/ClassSection";
 import { PersonRow } from "@/components/PersonRow";
 import { assignCourseColors } from "@/lib/colors";
-import { ScheduleGrid, type GridMeeting } from "@/components/ScheduleGrid";
+import { type GridMeeting } from "@/components/ScheduleGrid";
+import { WeekWithPeople, type SectionSummary } from "@/components/WeekWithPeople";
 import { ShareButton } from "@/components/ShareButton";
 import { PrivacyPrompt } from "@/components/PrivacyPrompt";
 import { PasteFlow } from "@/components/PasteFlow";
 import { schoolOrDefault } from "@/lib/schools";
 
-export const metadata: Metadata = { title: "Your classes" };
+export const metadata: Metadata = { title: "Your week" };
 export const dynamic = "force-dynamic";
 
+/**
+ * Home.
+ *
+ * Ordered by what changes what somebody does next, which is not the order the
+ * data comes in. The invite is first because Honk is worth nothing with one
+ * person in it. The people are next. The week is last and carries the classes
+ * inside it — there is no separate list of enrolments, because reading a
+ * student their own timetable spends the screen on the one thing they already
+ * knew when they opened the app.
+ */
 export default async function HomePage() {
   const user = await getOptionalUser();
   if (!user) redirect("/signin");
@@ -44,7 +55,7 @@ export default async function HomePage() {
       <div className="space-y-6">
         <div className="space-y-2">
           <h1 className="text-[26px] font-semibold tracking-[-0.02em]">
-            Let's get your schedule in.
+            Let&apos;s get your schedule in.
           </h1>
           <p className="text-[15px] text-[var(--ink-soft)]">
             Paste it from {school.guide?.portal ?? "your portal"}, then Honk shows who else
@@ -59,27 +70,24 @@ export default async function HomePage() {
   }
 
   const now = campusNow();
-  const [classes, schedule, friends, requests, freeNow] = await Promise.all([
+  const [classes, schedule, friends, requests, freeNow, friendsBySection] = await Promise.all([
     getMyClassesWithCounts(user.id, termCode),
     getMySchedule(user.id, termCode),
     getFriendsWithNextGap(user.id, termCode, now),
     listIncomingRequests(user.id),
     getFreeNow(user.id, termCode, now),
+    getFriendsBySection(user.id, termCode),
   ]);
 
-  // Aggregate only, which SPEC section 6 allows to everyone: a count names
-  // nobody. Summing across sections would double-count a person in two of
-  // them, so this counts sections rather than people.
-  const sectionsWithOthers = classes.filter((c) => c.otherCount > 0).length;
-  const biggestShared = classes.reduce<(typeof classes)[number] | null>(
-    (best, c) => (c.otherCount > (best?.otherCount ?? 0) ? c : best),
-    null,
-  );
+  const courseColors = assignCourseColors(schedule.map((c) => `${c.subject} ${c.catalog}`));
+  const countsBySection = new Map(classes.map((c) => [c.sectionId, c]));
 
-  const courseColors = assignCourseColors(
-    schedule.map((c) => `${c.subject} ${c.catalog}`),
-  );
-
+  /*
+   * The week, carrying who is in it. Counts and friends ride along on each
+   * meeting rather than living in a list beside the grid, because the question
+   * this page answers is not "what am I enrolled in" but "where in my week are
+   * the people".
+   */
   const meetings: GridMeeting[] = schedule.flatMap((course) =>
     course.sections.flatMap((section) =>
       section.meetings.map((meeting) => ({
@@ -90,9 +98,28 @@ export default async function HomePage() {
         code: `${course.subject} ${course.catalog}`,
         component: section.component,
         colorIndex: courseColors[`${course.subject} ${course.catalog}`],
+        sectionId: section.sectionId,
+        sharedCount: countsBySection.get(section.sectionId)?.otherCount ?? 0,
+        friendCount: (friendsBySection.get(section.sectionId) ?? []).length,
       })),
     ),
   );
+
+  const sections: SectionSummary[] = schedule.flatMap((course) =>
+    course.sections.map((section) => ({
+      sectionId: section.sectionId,
+      code: `${course.subject} ${course.catalog}`,
+      component: section.component,
+      sectionCode: section.sectionCode,
+      otherCount: countsBySection.get(section.sectionId)?.otherCount ?? 0,
+      friends: friendsBySection.get(section.sectionId) ?? [],
+    })),
+  );
+
+  const friendsInClasses = new Set(
+    [...friendsBySection.values()].flatMap((list) => list.map((f) => f.id)),
+  ).size;
+  const nobodyYet = friends.length === 0 && requests.length === 0;
 
   return (
     <div className="space-y-10">
@@ -100,7 +127,7 @@ export default async function HomePage() {
 
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-[26px] font-semibold tracking-[-0.02em]">
-          {user.displayName?.split(" ")[0] ?? "Your"} classes
+          {user.displayName?.split(" ")[0] ?? "Your"} week
         </h1>
         <div className="flex flex-wrap gap-2">
           <span className="chip">{school.short}</span>
@@ -109,51 +136,33 @@ export default async function HomePage() {
       </div>
 
       {/*
-        The first thing somebody sees after pasting, and only while they have
-        nobody. A schedule on its own is a timetable, which is not what Honk is
-        — so the moment the paste lands, the screen says what the schedule is
-        for and hands over the link. It disappears the instant there is one
-        friend or one request, because past that point it would be nagging.
+        The invite is the first thing now rather than a footnote under the
+        classes. Honk is worth nothing with one person in it, so the single
+        action that makes it worth anything does not belong below the fold —
+        and it stays put once there are friends, because the second and the
+        tenth are worth as much as the first.
       */}
-      {friends.length === 0 && requests.length === 0 && (
-        <section className="card space-y-3 p-5 sm:p-6">
-          <h2 className="text-[18px] font-semibold tracking-[-0.01em]">
-            Honk needs one other person to be worth anything.
-          </h2>
-          <p className="text-[15px] leading-relaxed text-[var(--ink-soft)]">
-            {sectionsWithOthers > 0 ? (
-              <>
-                You already share {sectionsWithOthers}{" "}
-                {sectionsWithOthers === 1 ? "section" : "sections"} with people here
-                {biggestShared ? (
-                  <>
-                    {" "}
-                    — {biggestShared.otherCount} of them in{" "}
-                    <span className="mono text-[14px]">
-                      {biggestShared.subject} {biggestShared.catalog}
-                    </span>
-                  </>
-                ) : null}
-                . Shared classes show up on their own. Shared free time only appears once
-                you have added each other.
-              </>
-            ) : (
-              <>
-                Nobody from your classes has joined yet, so there is nothing to see above.
-                That is not broken — it is what being early looks like. Send your link to
-                the people you already sit next to, and to the ones who went somewhere
-                else: shared free time works across universities.
-              </>
-            )}
+      <section className="card flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold">
+            {nobodyYet
+              ? "Honk needs one other person to be worth anything."
+              : friendsInClasses > 0
+                ? `You share classes with ${friendsInClasses} ${
+                    friendsInClasses === 1 ? "friend" : "friends"
+                  }.`
+                : "Add the people you already sit next to."}
           </p>
-          <div className="pt-1">
-            <ShareButton handle={user.handle} label="Send my link" />
-          </div>
-        </section>
-      )}
+          <p className="mt-0.5 text-[14px] leading-relaxed text-[var(--ink-soft)]">
+            {nobodyYet
+              ? "Send your link to the people you sit next to — and the ones who went somewhere else. Shared free time works across universities."
+              : "Everyone you add makes the week below more useful."}
+          </p>
+        </div>
+        <ShareButton handle={user.handle} label="Send my link" />
+      </section>
 
-      {/* Free right now leads only when there is something in it. A brand-new
-          account with no friends should not open onto an empty block. */}
+      {/* Free right now leads only when there is something in it. */}
       {freeNow.length > 0 && (
         <section className="space-y-3">
           <h2 className="section-label">Free right now</h2>
@@ -177,21 +186,13 @@ export default async function HomePage() {
       )}
 
       <section className="space-y-3">
-        <h2 className="section-label">Your classes</h2>
-        <ClassSection classes={classes} />
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="section-label">Your people</h2>
-          {friends.length > 0 && <ShareButton handle={user.handle} label="Invite" variant="secondary" />}
-        </div>
+        <h2 className="section-label">Your people</h2>
 
         {requests.length > 0 && (
           <div className="card px-4 py-1">
             <p className="border-b border-[var(--border)] pb-2 pt-3 text-[13px] text-[var(--ink-soft)]">
-              {requests.length === 1 ? "One person wants" : `${requests.length} people want`} to add
-              you.
+              {requests.length === 1 ? "One person wants" : `${requests.length} people want`} to
+              add you.
             </p>
             <ul className="divide-y divide-[var(--border)]">
               {requests.map((request) => (
@@ -228,13 +229,10 @@ export default async function HomePage() {
           </div>
         ) : (
           requests.length === 0 && (
-            <div className="card space-y-3 p-5">
-              <p className="text-[15px] text-[var(--ink-soft)]">
-                Nobody here yet. Add people from your classes above, or send your link to the
-                friends you already have.
-              </p>
-              <ShareButton handle={user.handle} />
-            </div>
+            <p className="text-[15px] leading-relaxed text-[var(--ink-soft)]">
+              Nobody here yet. Open a class in the week below to see who else is in it, or send
+              your link.
+            </p>
           )
         )}
       </section>
@@ -249,7 +247,12 @@ export default async function HomePage() {
             Update it
           </Link>
         </div>
-        <ScheduleGrid meetings={meetings} today={now.weekday} />
+        <WeekWithPeople
+          meetings={meetings}
+          sections={sections}
+          today={now.weekday}
+          viewerSchoolId={user.schoolId}
+        />
       </section>
     </div>
   );

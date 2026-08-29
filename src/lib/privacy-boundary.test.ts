@@ -41,6 +41,18 @@ const SELF_SCOPED = [
  */
 const ANONYMOUS_READS = [join("src", "lib", "invite.ts"), join("src", "lib", "stats.ts")];
 
+/**
+ * Reads for the operator rather than for a user.
+ *
+ * `admin/stats.ts` counts across every account, which no viewer-scoped query
+ * is allowed to do. It earns that the same way `stats.ts` does — by returning
+ * numbers and never a row — and it is gated behind a password that is not the
+ * student sign-in. The assertion below is what keeps that true: the moment it
+ * selects a name or an address it stops being a count and becomes a directory
+ * of everyone who ever signed up.
+ */
+const OPERATOR_READS = [join("src", "lib", "admin", "stats.ts")];
+
 const SENSITIVE_TABLES = ["enrollments", "meetings", "users"];
 
 function walk(dir: string): string[] {
@@ -55,7 +67,7 @@ function walk(dir: string): string[] {
 
 function isAllowed(relPath: string): boolean {
   if (relPath.endsWith(".test.ts")) return true;
-  return [...ENFORCEMENT_POINTS, ...SELF_SCOPED, ...ANONYMOUS_READS].some(
+  return [...ENFORCEMENT_POINTS, ...SELF_SCOPED, ...ANONYMOUS_READS, ...OPERATOR_READS].some(
     (allowed) => relPath === allowed,
   );
 }
@@ -142,6 +154,21 @@ describe("privacy boundary", () => {
     expect(invite, "invite.ts is missing").toBeDefined();
     expect(invite!.source).toContain("eq(users.discoverable, true)");
     expect(invite!.source).not.toContain("users.email");
+  });
+
+  it("keeps the admin dashboard to counts", () => {
+    const stats = files.find((f) => f.path === join("src", "lib", "admin", "stats.ts"));
+    expect(stats, "admin/stats.ts is missing").toBeDefined();
+    expect(stats!.source).toContain("count(*)");
+
+    /*
+     * The identity carriers. `users.id` is deliberately not on this list: it
+     * appears in join and correlation predicates, which project nothing. A
+     * name or an address appearing at all would mean a row is being returned.
+     */
+    for (const column of ["users.handle", "users.displayName", "users.email"]) {
+      expect(stats!.source, `admin/stats.ts must not read ${column}`).not.toContain(column);
+    }
   });
 
   it("has no 'who viewed your profile', proximity or streak features", () => {

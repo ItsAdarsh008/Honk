@@ -86,10 +86,38 @@ describe("validateSchedule", () => {
     expect(validateSchedule(bad).ok).toBe(false);
   });
 
-  it("rejects the same class number twice", () => {
-    const bad = clone();
-    bad.courses[0].sections.push({ ...bad.courses[0].sections[0] });
-    expect(validateSchedule(bad).ok).toBe(false);
+  it("drops the same class listed twice rather than refusing the schedule", () => {
+    /*
+     * This used to be a rejection. It cost a real student at York a whole
+     * term: two required components of one course that the parser could not
+     * tell apart, and the entire paste refused with a message describing
+     * something that was not true of his timetable. An exact repeat is now
+     * dropped, and the rest of the schedule saves.
+     */
+    const doubled = clone();
+    const before = doubled.courses[0].sections.length;
+    doubled.courses[0].sections.push({ ...doubled.courses[0].sections[0] });
+
+    const result = validateSchedule(doubled);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.courses[0].sections).toHaveLength(before);
+  });
+
+  it("keeps two components that collide but meet at different times", () => {
+    // The York case: same course, same section code, different parts. They are
+    // different classes and both have to survive.
+    const twoParts = clone();
+    const first = twoParts.courses[0].sections[0];
+    twoParts.courses[0].sections = [
+      { ...first, classNumber: null, meetings: [{ weekday: 1, startMin: 600, endMin: 650, location: null }] },
+      { ...first, classNumber: null, meetings: [{ weekday: 3, startMin: 800, endMin: 850, location: null }] },
+    ];
+
+    const result = validateSchedule(twoParts);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.courses[0].sections).toHaveLength(2);
   });
 
   it("rejects a meeting that ends before it starts", () => {

@@ -339,6 +339,13 @@ These five are everything the code reads:
 `NEXT_PUBLIC_SITE_URL` is the only one exposed to the browser, and it holds
 nothing secret. The Resend key is server-only and must stay that way.
 
+**`ADMIN_EMAIL` and `ADMIN_PASSWORD`** are the pair behind `/admin`. Both or
+neither: with either unset the page 404s rather than showing a login, because a
+form tells a stranger there is something there and a 404 tells them nothing. The
+password also signs the admin cookie, so changing it signs you out everywhere.
+Set them in Vercel for Production if you want the dashboard on the live site —
+without them, `/admin` simply does not exist there.
+
 It also tolerates being written wrong: a bare `honk.vercel.app` with no scheme,
 a trailing slash, or an empty string all normalise instead of throwing. That
 used to fail the whole build with `TypeError: Invalid URL`.

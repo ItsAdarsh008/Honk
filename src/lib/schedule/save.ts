@@ -19,7 +19,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "../db";
 import { courses, enrollments, meetings, sections, terms } from "../db/schema";
 import { termName } from "../time";
-import { sectionKeyFor, type ParsedCourse, type ParseResult } from "./types";
+import { resolveSectionKeys, type ParsedCourse, type ParseResult } from "./types";
 
 export interface SaveResult {
   termCode: string;
@@ -44,6 +44,14 @@ export async function saveSchedule(
 
   await ensureTerm(termCode, parsed.courses, db);
 
+  /*
+   * Keys are resolved across the whole schedule, not per section, so that two
+   * components the parser could not tell apart get distinct rows instead of
+   * silently merging into one. Must be the same call the validator made, or
+   * the row written would not be the row that was checked.
+   */
+  const { keys } = resolveSectionKeys(parsed.courses);
+
   const sectionIds: number[] = [];
   let meetingCount = 0;
 
@@ -57,7 +65,7 @@ export async function saveSchedule(
           schoolId,
           courseId,
           termCode,
-          sectionKey: sectionKeyFor(course.subject, course.catalog, section),
+          sectionKey: keys.get(section) ?? `${course.subject}.${course.catalog}.${section.component}.${section.sectionCode}`,
           classNumber: section.classNumber,
           sectionCode: section.sectionCode,
           component: section.component,

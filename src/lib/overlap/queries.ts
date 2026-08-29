@@ -489,6 +489,66 @@ export async function getClassmates(
 }
 
 /**
+ * Which accepted friends are in each of the caller's sections.
+ *
+ * This is what turns the week grid from a timetable into the thing Honk is
+ * for: a block that says "CS 135" is a class, and a block that says "CS 135,
+ * with Priya" is a reason to go.
+ *
+ * Friends only, and only sections the caller is enrolled in — so this adds
+ * nothing anybody could not already see. A friend's presence in a shared class
+ * is exactly the fact `getClassmates` would return for a discoverable person,
+ * minus the discoverability requirement, which accepted friendship supersedes:
+ * they agreed to be visible to this person specifically.
+ */
+export async function getFriendsBySection(
+  userId: string,
+  termCode: string,
+  db: Db = getDb(),
+): Promise<Map<number, Classmate[]>> {
+  const out = new Map<number, Classmate[]>();
+  const ids = await friendIds(userId, db);
+  if (!ids.length) return out;
+
+  const rows = await db
+    .select({
+      sectionId: enrollments.sectionId,
+      id: users.id,
+      handle: users.handle,
+      displayName: users.displayName,
+      schoolId: users.schoolId,
+    })
+    .from(enrollments)
+    .innerJoin(users, eq(users.id, enrollments.userId))
+    .where(
+      and(
+        inArray(enrollments.userId, ids),
+        isNotNull(users.verifiedAt),
+        sql`${enrollments.sectionId} in (
+          select section_id from ${enrollments}
+          where user_id = ${userId} and term_code = ${termCode}
+        )`,
+      ),
+    );
+
+  for (const row of rows) {
+    const list = out.get(row.sectionId) ?? [];
+    list.push({
+      id: row.id,
+      handle: row.handle,
+      displayName: row.displayName,
+      schoolId: row.schoolId,
+      relationship: "friends",
+    });
+    out.set(row.sectionId, list);
+  }
+  for (const list of out.values()) {
+    list.sort((a, b) => (a.displayName ?? "").localeCompare(b.displayName ?? ""));
+  }
+  return out;
+}
+
+/**
  * A profile as one user may see another: identity, and whether they share any
  * section. Never a schedule, never a room, even between friends — the friend
  * views go through the gap functions below.
