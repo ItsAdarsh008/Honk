@@ -4,6 +4,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   serial,
@@ -287,6 +288,57 @@ export const friendships = pgTable(
     index("friendships_status_idx").on(t.status),
   ],
 );
+
+/* ------------------------------------------------------------------ *
+ * Paste samples
+ * ------------------------------------------------------------------ */
+
+/**
+ * Pastes the parser could not read, kept so they can be fixed.
+ *
+ * Every school but Waterloo is in beta for one reason: nobody has proved Honk
+ * can read that portal. `schools-out-of-beta.ts` sets the bar at "a real paste
+ * from a real student there, which the parser read correctly" — and until this
+ * table existed there was no way to see one. A student whose paste failed got
+ * "Nothing readable in there yet", closed the tab, and took the only evidence
+ * of the bug with them.
+ *
+ * Deliberately narrow, because this is the most identifying text a user hands
+ * over — a Quest paste carries their name above the timetable:
+ *
+ *  - Only beta schools. Waterloo is out of beta and its parser is built from a
+ *    real paste already, so there is nothing to learn from another one.
+ *  - Only failures. A paste that read cleanly is not evidence of anything and
+ *    is not kept.
+ *  - No `user_id`, and no IP. Fixing a parser needs the text and the school and
+ *    nothing else, so linking a row to the person is a cost with no return.
+ *  - Ninety days, enforced on write by `recordPasteSample`.
+ *
+ * The text itself is stored exactly as pasted. A scrubber would be the obvious
+ * kindness here, and it is the wrong call for this table specifically: the line
+ * it would strip is often the line that broke the parser.
+ */
+export const pasteSamples = pgTable(
+  "paste_samples",
+  {
+    id: serial("id").primaryKey(),
+    schoolId: text("school_id").notNull(),
+    /** Which parser produced the reading below — "generic" or "peoplesoft". */
+    parser: text("parser").notNull(),
+    /** "no_courses" when nothing was read at all, "warnings" when some was. */
+    outcome: text("outcome").notNull(),
+    courseCount: integer("course_count").notNull().default(0),
+    warnings: jsonb("warnings").notNull().default([]),
+    rawText: text("raw_text").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("paste_samples_school_idx").on(t.schoolId),
+    index("paste_samples_created_idx").on(t.createdAt),
+  ],
+);
+
+export type PasteSample = typeof pasteSamples.$inferSelect;
 
 /* ------------------------------------------------------------------ *
  * Relations
