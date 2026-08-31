@@ -420,3 +420,289 @@ describe("section identity", () => {
     expect(sectionKeyFor("PSYC", "1000", mine)).toBe(sectionKeyFor("PSYC", "1000", theirs));
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Laurier
+ * ------------------------------------------------------------------ */
+
+/**
+ * LORIS, which is Banner, and which looks like nothing else in this file.
+ *
+ * Two things about the layout broke the parser outright rather than costing it
+ * a room. The header leads with the *title* and buries the code in the middle,
+ * and Laurier welds the code together — `EC120`, never `EC 120`, and the
+ * separator between letters and digits used to be mandatory. Either one alone
+ * was fatal; together they meant a LORIS paste produced zero courses and the
+ * student got "Nothing readable in there yet".
+ *
+ * Reconstructed from Banner's Student Detail Schedule layout, not taken from a
+ * real student's paste, so it sits with the York and Brock fixtures above
+ * rather than with the Quest one. It proves the shape is read, not that this
+ * is the shape Laurier prints — which is why Laurier stays in beta until
+ * somebody actually pastes into it.
+ */
+const LORIS = [
+  "Student Detail Schedule",
+  "",
+  "Total Credit Hours: 2.500",
+  "Introduction to Microeconomics - EC120 - A",
+  "Associated Term: Fall 2026",
+  "CRN: 30412",
+  "Status: Registered on Jul 15, 2026",
+  "Assigned Instructor: Jane Doe",
+  "Grade Mode: Standard Numeric",
+  "Credits: 0.500",
+  "",
+  "Scheduled Meeting Times",
+  "Type\tTime\tDays\tWhere\tDate Range\tSchedule Type\tInstructors",
+  "Class\t10:00 am - 11:20 am\tMW\tBricker Academic Building 101\tSep 08, 2026 - Dec 05, 2026\tLecture\tJane Doe (P)",
+  "",
+  "Business Foundations - BU111 - B",
+  "Associated Term: Fall 2026",
+  "CRN: 30877",
+  "Status: Registered on Jul 15, 2026",
+  "Assigned Instructor: John Roe",
+  "",
+  "Scheduled Meeting Times",
+  "Type\tTime\tDays\tWhere\tDate Range\tSchedule Type\tInstructors",
+  "Class\t1:00 pm - 2:20 pm\tTR\tPeters Building P1025\tSep 08, 2026 - Dec 05, 2026\tLecture\tJohn Roe (P)",
+  "Class\t3:30 pm - 4:20 pm\tF\tLazaridis Hall 1011\tSep 08, 2026 - Dec 05, 2026\tTutorial\tJohn Roe (P)",
+].join("\n");
+
+describe("Laurier", () => {
+  const result = parseGenericSchedule(LORIS, { today: TODAY });
+
+  it("reads a code with nothing between the letters and the digits", () => {
+    expect(result.courses.map((c) => `${c.subject} ${c.catalog}`)).toEqual(["EC 120", "BU 111"]);
+  });
+
+  it("finds the code in the middle of a title-first header", () => {
+    expect(result.courses[0].title).toBe("Introduction to Microeconomics");
+    expect(result.courses[1].title).toBe("Business Foundations");
+  });
+
+  it("takes the section code Banner printed rather than inferring one", () => {
+    const sections = result.courses.flatMap((c) => c.sections);
+    expect(sections.map((s) => s.sectionCode)).toEqual(["A", "B", "B"]);
+    expect(sections.every((s) => s.sectionCodeInferred !== true)).toBe(true);
+  });
+
+  it("keeps the tutorial apart from the lecture it shares a section code with", () => {
+    expect(result.courses[1].sections.map((s) => s.component)).toEqual(["LEC", "TUT"]);
+    const [lecture, tutorial] = result.courses[1].sections;
+    expect(sectionKeyFor("BU", "111", lecture)).not.toBe(sectionKeyFor("BU", "111", tutorial));
+  });
+
+  it("reads days, times and the spelled-out building", () => {
+    expect(meetingsOf(result)).toEqual([
+      { code: "EC 120", component: "LEC", section: "A", weekday: 1, start: 600, end: 680, room: "Bricker Academic Building 101" },
+      { code: "EC 120", component: "LEC", section: "A", weekday: 3, start: 600, end: 680, room: "Bricker Academic Building 101" },
+      { code: "BU 111", component: "LEC", section: "B", weekday: 2, start: 780, end: 860, room: "Peters Building P1025" },
+      { code: "BU 111", component: "LEC", section: "B", weekday: 4, start: 780, end: 860, room: "Peters Building P1025" },
+      { code: "BU 111", component: "TUT", section: "B", weekday: 5, start: 930, end: 980, room: "Lazaridis Hall 1011" },
+    ]);
+  });
+
+  it("reads the dates, the term and the instructor, and warns about nothing", () => {
+    expect(result.termCode).toBe("1269");
+    expect(result.courses[0].sections[0].startDate).toBe("2026-09-08");
+    expect(result.courses[0].sections[0].endDate).toBe("2026-12-05");
+    expect(result.courses[0].sections[0].instructor).toBe("Jane Doe");
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("leaves no empty section behind when the block names an instructor first", () => {
+    const lab = parseGenericSchedule(
+      [
+        "Organic Chemistry Laboratory - CH234 - L1",
+        "Assigned Instructor: R Singh",
+        "Type\tTime\tDays\tWhere\tDate Range\tSchedule Type",
+        "Class\t2:30 pm - 5:20 pm\tW\tScience Building N2075\tSep 08, 2026 - Dec 05, 2026\tLab",
+      ].join("\n"),
+      { today: TODAY },
+    );
+    expect(lab.courses[0].sections.map((s) => s.component)).toEqual(["LAB"]);
+    expect(lab.courses[0].sections[0].instructor).toBe("R Singh");
+  });
+
+  it("still refuses a meeting row with no header above it", () => {
+    const orphan = parseGenericSchedule(
+      "Class\t10:00 am - 11:20 am\tMW\tBricker Academic Building 101\tSep 08, 2026 - Dec 05, 2026\tLecture",
+      { today: TODAY },
+    );
+    expect(orphan.courses).toEqual([]);
+    expect(orphan.warnings.some((w) => /no course code/i.test(w.reason))).toBe(true);
+  });
+
+  it("still refuses a welded room code as a course", () => {
+    const room = parseGenericSchedule(["BA101", "M W 10:30 AM - 11:20 AM"].join("\n"), {
+      today: TODAY,
+    });
+    expect(room.courses).toEqual([]);
+  });
+
+  it("does not read three short codes in a row as a title-first header", () => {
+    const notAHeader = parseGenericSchedule("LEC - EC120 - A", { today: TODAY });
+    expect(notAHeader.courses).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Laurier, from a real paste
+ * ------------------------------------------------------------------ */
+
+/**
+ * A real LORIS schedule, and a third Banner shape again.
+ *
+ * The fixture above this one was reconstructed from Banner's Student Detail
+ * Schedule and read fine. This is what a Laurier student actually pastes — the
+ * Banner 9 registration view — and it shared none of that layout's assumptions:
+ *
+ *   - the header is pipe-delimited, and the code is in the second cell
+ *   - the subject is *spelled out*: `Mathematics 123`, not `MA123`
+ *   - the days sit on a line of their own, above the time
+ *   - under that line is a seven-row checkbox grid, one letter per line, whose
+ *     last row is `S`
+ *   - the room is labelled rather than coded: `Building: ... Room: ...`
+ *   - the date range is joined by a doubled hyphen
+ *   - the instructor carries a `(Primary)` role
+ *
+ * Every one of those was fatal or lossy, and together they produced no courses
+ * at all. Instructor names are changed, the way the Quest fixture's are; the
+ * layout is otherwise exactly as pasted, trailing spaces included.
+ */
+const LORIS_REAL = [
+  "Intro Linear Algebra with App | Mathematics 123 Section A | Class Begin: 09/10/2026 | Class End: 12/09/2026 Registered",
+  "Message: **Enrolled** | Credits: 0.5 | Level: Undergraduate | Campus: Waterloo | Schedule Type: Lecture | Instructional Method: Lecture | Grade Mode: Normal Grading Mode | Waitlist Position: 0",
+  "09/10/2026 -- 12/09/2026   ",
+  "Tuesday,Thursday",
+  "S",
+  "M",
+  "T",
+  "W",
+  "R",
+  "F",
+  "S",
+  "   11:30 AM - 12:50 PM Type: Class Location: Waterloo Building: Arts Building Room: 1E1",
+  "Instructor: A Lecturer (Primary)",
+  "CRN: 3071",
+  "Intro Linear Algebra with App | Mathematics 123 Section L2 | Class Begin: 09/10/2026 | Class End: 12/09/2026 Registered",
+  "09/10/2026 -- 12/09/2026   ",
+  "Monday",
+  "S",
+  "M",
+  "T",
+  "W",
+  "R",
+  "F",
+  "S",
+  "   12:30 PM - 01:20 PM Type: Class Location: Waterloo Building: Lazaridis Hall Room: LH3060",
+  "No specified Instructor",
+  "CRN: 3074",
+  "Understanding Bus. Environment | Business 111 Section A | Class Begin: 09/10/2026 | Class End: 12/09/2026 Registered",
+  "09/10/2026 -- 12/09/2026   ",
+  "Monday,Wednesday",
+  "S",
+  "M",
+  "T",
+  "W",
+  "R",
+  "F",
+  "S",
+  "   08:30 AM - 09:50 AM Type: Class Location: Waterloo Building: Lazaridis Hall Room: LH3094",
+  "Instructor: B Professor (Primary)",
+  "CRN: 15",
+  "Understanding Bus. Environment | Business 111 Section 34 | Class Begin: 09/10/2026 | Class End: 12/09/2026 Registered",
+  "09/10/2026 -- 12/09/2026   ",
+  "Wednesday",
+  "S",
+  "M",
+  "T",
+  "W",
+  "R",
+  "F",
+  "S",
+  "   07:00 PM - 08:20 PM Type: Class Location: Waterloo Building: Arts Building Room: 2C4",
+  "No specified Instructor",
+  "CRN: 259",
+  "Intro to Data Analytics | Data Science 100 Section A | Class Begin: 09/10/2026 | Class End: 12/09/2026 Registered",
+  "09/10/2026 -- 12/09/2026   ",
+  "Tuesday,Thursday",
+  "S",
+  "M",
+  "T",
+  "W",
+  "R",
+  "F",
+  "S",
+  "   02:30 PM - 03:50 PM Type: Class Location: Waterloo Building: Lazaridis Hall Room: LH1010",
+  "Instructor: C Instructor (Primary)",
+  "CRN: 1758",
+].join("\n");
+
+describe("Laurier, from a real LORIS paste", () => {
+  const result = parseGenericSchedule(LORIS_REAL, { today: "2026-08-31" });
+
+  it("reads every course, and reads nothing it should not", () => {
+    expect(result.courses.map((c) => `${c.subject} ${c.catalog}`)).toEqual([
+      "MATHEMATICS 123",
+      "BUSINESS 111",
+      "DATA SCIENCE 100",
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("keeps the subject as LORIS spelled it rather than inventing a code", () => {
+    // Laurier's real codes are MA, BU and DATA — none of them derivable from
+    // the names above, which is exactly why none of them is guessed at.
+    expect(result.courses[2].subject).toBe("DATA SCIENCE");
+    expect(result.courses[2].title).toBe("Intro to Data Analytics");
+  });
+
+  it("puts both sections of a repeated course under one course", () => {
+    expect(result.courses[0].sections.map((s) => s.sectionCode)).toEqual(["A", "L2"]);
+    expect(result.courses[1].sections.map((s) => s.sectionCode)).toEqual(["A", "34"]);
+    expect(result.courses.flatMap((c) => c.sections).every((s) => s.sectionCodeInferred !== true)).toBe(true);
+  });
+
+  it("takes the days from the line above the time, not from the checkbox grid", () => {
+    // The grid's last row is `S`. Reading it would put every class on Saturday.
+    expect(meetingsOf(result).every((m) => m.weekday >= 1 && m.weekday <= 5)).toBe(true);
+    expect(meetingsOf(result)).toEqual([
+      { code: "MATHEMATICS 123", component: "LEC", section: "A", weekday: 2, start: 690, end: 770, room: "Arts Building 1E1" },
+      { code: "MATHEMATICS 123", component: "LEC", section: "A", weekday: 4, start: 690, end: 770, room: "Arts Building 1E1" },
+      { code: "MATHEMATICS 123", component: "LEC", section: "L2", weekday: 1, start: 750, end: 800, room: "Lazaridis Hall LH3060" },
+      { code: "BUSINESS 111", component: "LEC", section: "A", weekday: 1, start: 510, end: 590, room: "Lazaridis Hall LH3094" },
+      { code: "BUSINESS 111", component: "LEC", section: "A", weekday: 3, start: 510, end: 590, room: "Lazaridis Hall LH3094" },
+      { code: "BUSINESS 111", component: "LEC", section: "34", weekday: 3, start: 1140, end: 1220, room: "Arts Building 2C4" },
+      { code: "DATA SCIENCE 100", component: "LEC", section: "A", weekday: 2, start: 870, end: 950, room: "Lazaridis Hall LH1010" },
+      { code: "DATA SCIENCE 100", component: "LEC", section: "A", weekday: 4, start: 870, end: 950, room: "Lazaridis Hall LH1010" },
+    ]);
+  });
+
+  it("reads a date range joined by a doubled hyphen, and the term from it", () => {
+    expect(result.courses[0].sections[0].startDate).toBe("2026-09-10");
+    expect(result.courses[0].sections[0].endDate).toBe("2026-12-09");
+    expect(result.termCode).toBe("1269");
+  });
+
+  it("drops the instructor's role, and leaves an unstaffed section unstaffed", () => {
+    expect(result.courses[0].sections[0].instructor).toBe("A Lecturer");
+    expect(result.courses[0].sections[1].instructor).toBeNull();
+  });
+
+  it("gives every section its own identity", () => {
+    const keys = result.courses.flatMap((c) =>
+      c.sections.map((s) => sectionKeyFor(c.subject, c.catalog, s)),
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("does not read the status line as a course", () => {
+    const status = parseGenericSchedule(
+      "Message: **Enrolled** | Credits: 0.5 | Level: Undergraduate | Campus: Waterloo | Waitlist Position: 0",
+      { today: TODAY },
+    );
+    expect(status.courses).toEqual([]);
+  });
+});

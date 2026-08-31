@@ -40,7 +40,7 @@
  * behalf, with nothing behind it.
  */
 
-export const OUT_OF_BETA: readonly string[] = ["waterloo"];
+export const OUT_OF_BETA: readonly string[] = ["waterloo", "laurier"];
 
 export function isOutOfBeta(schoolId: string): boolean {
   return OUT_OF_BETA.includes(schoolId);

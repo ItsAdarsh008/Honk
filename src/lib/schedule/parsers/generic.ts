@@ -333,6 +333,23 @@ const NOT_A_SUBJECT = new Set([
  */
 const COURSE_CODE_RE = /^([A-Z]{2,10}(?:\/[A-Z]{2,10})?)(?:\s*\*\s*|\s+|\s*-\s*)(\d[0-9A-Z]{0,6})\b/;
 
+/**
+ * The same code with nothing at all between the letters and the digits.
+ *
+ * Laurier writes `EC120`, `BU111`, `CP104`, and LORIS prints them welded
+ * exactly like that. The separator in `COURSE_CODE_RE` is mandatory, so none
+ * of those was a course code as far as this parser was concerned, and a LORIS
+ * paste produced no courses at all — not a missed room, not a missed tutorial,
+ * nothing.
+ *
+ * Deliberately tighter than the spaced form. Two to four letters welded to
+ * three or four digits is a course code and very little else; making the
+ * separator in `COURSE_CODE_RE` optional instead would let `[A-Z]{2,10}` run
+ * straight into `\d[0-9A-Z]{0,6}` and swallow serial numbers and half the room
+ * codes in Ontario.
+ */
+const CONCAT_CODE_RE = /^([A-Z]{2,4})(\d{3,4}[A-Z]?)\b/;
+
 /** A leading label some portals put before the code. */
 const CODE_LABEL_RE = /^(?:course|class|cours)\s*[:#-]?\s*/i;
 
@@ -343,9 +360,23 @@ interface CourseCode {
   rest: string;
 }
 
-function readCourseCode(text: string): CourseCode | null {
-  const cleaned = text.trim().replace(/^[•*-]\s*/, "").replace(CODE_LABEL_RE, "");
-  const match = COURSE_CODE_RE.exec(cleaned.toUpperCase());
+function cleanCodeCell(text: string): string {
+  return text.trim().replace(/^[•*-]\s*/, "").replace(CODE_LABEL_RE, "");
+}
+
+/**
+ * The code itself, with none of the guards about where it was found.
+ *
+ * Split out from `readCourseCode` because the room guard below is a statement
+ * about a cell that turned up unannounced at the head of a line. A cell whose
+ * position has already identified it as the code — the middle segment of a
+ * Banner header — carries no such doubt and must not be second-guessed:
+ * `EC120` has exactly the shape of a room, and applying the guard there
+ * rejects every course code Laurier prints.
+ */
+function matchCourseCode(cleaned: string): CourseCode | null {
+  const upper = cleaned.toUpperCase();
+  const match = COURSE_CODE_RE.exec(upper) ?? CONCAT_CODE_RE.exec(upper);
   if (!match) return null;
   const subject = match[1];
   if (NOT_A_SUBJECT.has(subject) || subject.split("/").some((part) => NOT_A_SUBJECT.has(part))) {
@@ -353,12 +384,19 @@ function readCourseCode(text: string): CourseCode | null {
   }
   const catalog = match[2];
   if (!/\d/.test(catalog.slice(1)) && catalog.length < 3) return null;
+  return { subject, catalog, rest: cleaned.slice(match[0].length) };
+}
+
+function readCourseCode(text: string): CourseCode | null {
+  const cleaned = cleanCodeCell(text);
+  const code = matchCourseCode(cleaned);
+  if (!code) return null;
   // `TH 247` and `MC 4020` are rooms with exactly the shape of `CS 135`, and
   // one room misread as a course header swallows every meeting under it into a
   // class nobody is enrolled in.
   if (readRoom(cleaned)) return null;
 
-  return { subject, catalog, rest: cleaned.slice(match[0].length) };
+  return code;
 }
 
 /**
@@ -371,6 +409,52 @@ function readCourseCode(text: string): CourseCode | null {
  */
 function looksLikeCourseHeader(rest: string, cells: string[], hasTime: boolean): boolean {
   return rest.trim().length > 0 || cells.length > 1 || hasTime;
+}
+
+interface TitleFirstHeader extends CourseCode {
+  section: string;
+}
+
+/** What Banner puts in the last segment: `A`, `B1`, `01`, `OC1`. */
+const TITLE_FIRST_SECTION_RE = /^[A-Z0-9]{1,4}$/i;
+
+/**
+ * The header written the other way round.
+ *
+ * LORIS at Laurier, and every other Ellucian "Student Detail Schedule", leads
+ * with the title and buries the code in the middle:
+ *
+ *     Introduction to Microeconomics - EC120 - A
+ *
+ * Everything else in this file reads a course code only at the head of the
+ * first cell, and for a good reason that has not gone away: `LECT 01  Mon
+ * 11:30 - 13:20` contains a perfectly well-formed course code, and a parser
+ * that scans anywhere on the line turns every meeting row into an imaginary
+ * course.
+ *
+ * So this does not scan either. It matches one exact shape — three
+ * dash-separated segments whose last two are a course code and a section
+ * label, with prose in front — which is a thing a meeting row cannot
+ * accidentally be. A title containing its own dash is fine: the code and the
+ * section are taken from the end, and whatever is left is the title.
+ */
+function readTitleFirstHeader(text: string): TitleFirstHeader | null {
+  const parts = cleanCodeCell(text).split(/\s+[-–—]\s+/);
+  if (parts.length < 3) return null;
+
+  const section = parts[parts.length - 1].trim();
+  if (!TITLE_FIRST_SECTION_RE.test(section)) return null;
+
+  // The whole segment has to be the code. `Peters Building P1025` is not one.
+  const code = matchCourseCode(parts[parts.length - 2].trim());
+  if (!code || code.rest.trim()) return null;
+
+  // And the front has to read as a name rather than more metadata, which is
+  // what keeps a row of three short codes from becoming a course.
+  const title = parts.slice(0, -2).join(" - ").trim();
+  if (!title || title.length > 120 || !/[a-z]/.test(title)) return null;
+
+  return { ...code, rest: title, section: section.toUpperCase() };
 }
 
 /* ------------------------------------------------------------------ *
@@ -414,6 +498,32 @@ function readComponent(token: string): string | null {
 }
 
 /** `LECT 01` / `SEM  D2` — the component and, if it is next to it, its number. */
+/**
+ * The component from a column to the *right* of the time.
+ *
+ * Banner prints the kind of class last: `Class ⇥ 10:00 am - 11:20 am ⇥ MW ⇥
+ * Bricker Academic Building 101 ⇥ Sep 08 - Dec 05 ⇥ Lecture`. Nothing before
+ * the time says whether that row is a lecture or a tutorial.
+ *
+ * Left unread, a course's lecture row and its tutorial row both fall back to
+ * LEC, land on the same key, and merge into a single section. That is not a
+ * cosmetic loss — the component is part of a section's identity, so two
+ * genuinely different classes become one shared row, and the tutorial stops
+ * existing.
+ *
+ * Only a cell that is nothing but the word counts, which is what keeps
+ * `Lazaridis Hall 1011` and an instructor's name out of this.
+ */
+function componentAfterTime(cells: string[]): { component: string; sectionCode: string | null } | null {
+  const timeCell = cells.findIndex((cell) => timeRanges(cell).length > 0);
+  if (timeCell === -1) return null;
+  for (const cell of cells.slice(timeCell + 1)) {
+    const component = readComponent(cell);
+    if (component) return { component, sectionCode: null };
+  }
+  return null;
+}
+
 function readComponentAndSection(text: string): { component: string; sectionCode: string | null } | null {
   const tokens = text.trim().split(/[\s|]+/).filter(Boolean);
   for (let i = 0; i < tokens.length; i += 1) {
@@ -447,10 +557,17 @@ function readRoom(text: string): string | null {
 
 const INSTRUCTOR_LABEL_RE = /\b(?:instructor|professor|teacher|taught\s+by|prof)\s*[:.]\s*(.+)$/i;
 
+/** Banner's `(Primary)` marks which of several teachers owns the section. */
+const INSTRUCTOR_ROLE_RE = /\s*\((?:primary|secondary|p|s)\)\s*$/i;
+
 function readInstructor(line: string): string | null {
   const match = INSTRUCTOR_LABEL_RE.exec(line);
   if (!match) return null;
-  const name = match[1].split(/[|\t]|\s{2,}/)[0].trim().replace(/[,;]$/, "");
+  const name = match[1]
+    .split(/[|\t]|\s{2,}/)[0]
+    .trim()
+    .replace(INSTRUCTOR_ROLE_RE, "")
+    .replace(/[,;]$/, "");
   if (!name || name.length > 80 || /^tba|^tbd|^staff$/i.test(name)) return null;
   return name;
 }
@@ -464,10 +581,24 @@ const MONTHS: Record<string, number> = {
   jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-const ISO_RANGE_RE = /(\d{4})-(\d{2})-(\d{2})\s*(?:[-–—]|to)\s*(\d{4})-(\d{2})-(\d{2})/;
-const SLASH_RANGE_RE = /(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(?:[-–—]|to)\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/;
-const WORD_RANGE_RE =
-  /([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s*(\d{4})?\s*(?:[-–—]|to)\s*([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s*(\d{4})/;
+/**
+ * What a portal puts between the two ends of a date range.
+ *
+ * The doubled hyphen is Banner's — LORIS prints `09/10/2026 -- 12/09/2026` —
+ * and one hyphen's worth of pattern read none of it, so a Laurier schedule
+ * carried no dates and had to have its term guessed from the clock.
+ */
+const RANGE_DASH = String.raw`(?:-{1,2}|[–—]|to)`;
+
+const ISO_RANGE_RE = new RegExp(
+  String.raw`(\d{4})-(\d{2})-(\d{2})\s*${RANGE_DASH}\s*(\d{4})-(\d{2})-(\d{2})`,
+);
+const SLASH_RANGE_RE = new RegExp(
+  String.raw`(\d{1,2})\/(\d{1,2})\/(\d{4})\s*${RANGE_DASH}\s*(\d{1,2})\/(\d{1,2})\/(\d{4})`,
+);
+const WORD_RANGE_RE = new RegExp(
+  String.raw`([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s*(\d{4})?\s*${RANGE_DASH}\s*([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s*(\d{4})`,
+);
 
 function iso(year: number, month: number, day: number): string | null {
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
@@ -591,6 +722,8 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
   let current: WorkingCourse | null = null;
   /** Meetings from the line just read, waiting for a room on the next one. */
   let pending: ParsedMeeting[] = [];
+  /** Days printed on a line of their own, waiting for the time they describe. */
+  let pendingDays: number[] | null = null;
 
   const normalised = input.replace(/\r\n?/g, "\n").replace(/ /g, " ");
   const order = detectDateOrder(normalised);
@@ -645,13 +778,24 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
      * imaginary course. Where a line has no cell boundaries the first cell is
      * the line, so nothing is lost.
      */
-    const candidate = readCourseCode(cells[0]);
+    const spelled = readSectionWordHeader(cells);
+    const titleFirst = spelled ? null : readTitleFirstHeader(cells[0]);
+    const candidate = spelled ?? titleFirst ?? readCourseCode(cells[0]);
+    // Both named shapes state outright that they are headers, so neither needs
+    // the corroboration `looksLikeCourseHeader` asks of a bare code.
+    const named: { section: string } | null = spelled ?? titleFirst;
     const code =
-      candidate && looksLikeCourseHeader(candidate.rest, cells, times.length > 0)
+      candidate &&
+      (named !== null || looksLikeCourseHeader(candidate.rest, cells, times.length > 0))
         ? candidate
         : null;
     if (code) {
-      const { section, title } = splitTitle(code.rest, cells);
+      // Banner already said which section this is; nothing has to be inferred.
+      const parsed = spelled
+        ? { section: spelled.section, title: spelled.courseTitle }
+        : splitTitle(code.rest, cells);
+      const section = titleFirst ? titleFirst.section : parsed.section;
+      const title = parsed.title;
 
       /*
        * A course code seen twice is the same course, not a second one.
@@ -687,8 +831,10 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
         byCode.set(`${code.subject} ${code.catalog}`, current);
         courses.push(course);
       }
-      // A room can only ever belong to the course it was printed under.
+      // A room, and the days above a time, can only ever belong to the course
+      // they were printed under.
       pending = [];
+      pendingDays = null;
     }
 
     if (!current) {
@@ -705,7 +851,9 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
     const status = statusIn(trimmed);
     if (status && !code) current.course.status = status;
 
-    const componentInfo = readComponentAndSection(times.length ? line.slice(0, times[0].start) : line);
+    const componentInfo =
+      readComponentAndSection(times.length ? line.slice(0, times[0].start) : line) ??
+      (times.length ? componentAfterTime(cells) : null);
     const dates = readDateRange(line, order);
     const instructor = readInstructor(line);
 
@@ -725,6 +873,15 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
         return;
       }
 
+      // Days announced above the time they belong to, the way LORIS prints
+      // them. Kept until the next course header rather than until the next
+      // meeting, since one such line can head more than one time.
+      const announced = standaloneDays(trimmed);
+      if (announced) {
+        pendingDays = announced;
+        return;
+      }
+
       // A line with no time can still carry the section's dates or teacher.
       if (dates || instructor) {
         const section = sectionFor(current, componentInfo?.component ?? null, componentInfo?.sectionCode ?? null);
@@ -741,7 +898,7 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
     for (const time of times) {
       const before = line.slice(0, time.start);
       const after = line.slice(time.end);
-      const days = trailingDays(before) ?? leadingDays(after);
+      const days = trailingDays(before) ?? leadingDays(after) ?? pendingDays;
       const section = sectionFor(
         current,
         componentInfo?.component ?? null,
@@ -794,6 +951,36 @@ export function parseGenericSchedule(input: string, options: Options = {}): Pars
     }
     // A course with no section at all was a false header, not a class.
     if (!course.sections.length) continue;
+    /*
+     * Banner names the instructor and the dates in the block above the meeting
+     * table, which opens a section before anything has said what kind of class
+     * it is. When the table then turns out to hold a lab and no lecture, that
+     * opened section is left behind as an empty LEC nobody is enrolled in.
+     *
+     * What it learned is not thrown away with it — the instructor named up
+     * there is the instructor of whatever the table turns out to describe, and
+     * dropping the row that carried him means a Laurier lab card with no name
+     * on it. So it is folded into the sections that survive first, and only
+     * where they have nothing of their own to say.
+     *
+     * Only ever dropped when a sibling has meetings, at that. A course whose
+     * one section has none is the online asynchronous class, and dropping that
+     * would drop the enrollment with it.
+     */
+    const withMeetings = course.sections.filter((s) => s.meetings.length > 0);
+    if (withMeetings.length && withMeetings.length !== course.sections.length) {
+      for (const empty of course.sections) {
+        if (empty.meetings.length) continue;
+        for (const section of withMeetings) {
+          section.instructor = section.instructor ?? empty.instructor;
+          if (!section.startDate) {
+            section.startDate = empty.startDate;
+            section.endDate = empty.endDate;
+          }
+        }
+      }
+      course.sections = withMeetings;
+    }
     for (const section of course.sections) {
       section.meetings.sort((a, b) => a.weekday - b.weekday || a.startMin - b.startMin);
     }
@@ -886,12 +1073,129 @@ function splitTitle(rest: string, cells: string[]): { section: string | null; ti
 /** `Section A`, `Sect 01` — a label, and the code hiding inside it. */
 const SECTION_LABEL_RE = /^(?:section|sect|sec|sctn)\s*[:.]?\s*([A-Z0-9]{1,4})$/i;
 
+interface SectionWordHeader extends CourseCode {
+  section: string;
+  /** Taken from a neighbouring cell rather than from what follows the code. */
+  courseTitle: string | null;
+}
+
+/**
+ * `Mathematics 123 Section A` — the subject spelled out and the word `Section`
+ * printed in full.
+ *
+ * This is what LORIS actually gives a Laurier student, and it is a third shape
+ * again: the registration view names the department rather than coding it, so
+ * there is no `MA123` anywhere on the page to find. The header is one cell of
+ * a pipe-delimited row whose other cells are the title and the term dates.
+ *
+ * The literal word `Section` between a number and a short code is what makes
+ * this safe to look for in *any* cell rather than only the first. No meeting
+ * row, room, instructor or date carries it, so the shape cannot be stumbled
+ * into — which matters, because the code here is never in cell zero.
+ *
+ * The subject is kept as printed, at whatever length. Abbreviating it would
+ * mean inventing Laurier's codes, and they cannot be derived: Mathematics is
+ * `MA`, Data Science is `DATA`, Business is `BU`. A guess would be wrong about
+ * half the time, would be wrong *silently*, and would be baked into the row
+ * every other student in that class points at.
+ */
+const SECTION_WORD_RE =
+  /^([A-Za-z][A-Za-z.&'-]*(?:\s+[A-Za-z.&'-]+)*)\s+(\d[0-9A-Z]{0,6})\s+Section\s+([A-Za-z0-9]{1,6})$/i;
+
+/** A cell that reads like the name of a course rather than a labelled field. */
+function looksLikeTitle(cell: string): boolean {
+  const text = cell.trim();
+  if (text.length < 4 || text.length > 120) return false;
+  if (!/[a-z]/.test(text)) return false;
+  // `Class Begin: 09/10/2026` is a field, not a name.
+  if (/[:|]/.test(text) || /^\d/.test(text)) return false;
+  return timeRanges(text).length === 0;
+}
+
+function readSectionWordHeader(cells: string[]): SectionWordHeader | null {
+  for (let i = 0; i < cells.length; i += 1) {
+    const match = SECTION_WORD_RE.exec(cells[i].trim());
+    if (!match) continue;
+
+    const subject = match[1].trim().toUpperCase().replace(/\s+/g, " ");
+    if (subject.split(/[\s/]+/).some((word) => NOT_A_SUBJECT.has(word))) continue;
+
+    const title = cells.find((cell, j) => j !== i && looksLikeTitle(cell))?.trim() ?? null;
+    return {
+      subject,
+      catalog: match[2].toUpperCase(),
+      rest: "",
+      section: match[3].toUpperCase(),
+      courseTitle: title,
+    };
+  }
+  return null;
+}
+
+/**
+ * A line that is nothing but the days the class runs.
+ *
+ * LORIS prints them above the time rather than beside it — `Tuesday,Thursday`
+ * on its own line — so there is nothing next to the time for `trailingDays` or
+ * `leadingDays` to find, and every Laurier meeting warned that it could not
+ * tell which days it ran.
+ *
+ * A spelled-out day is required, and that is the whole trick. Directly under
+ * that line Banner draws a seven-row checkbox grid, one letter per line:
+ *
+ *     S
+ *     M
+ *     T
+ *     ...
+ *
+ * Every one of those parses as a perfectly good day list, and the last one
+ * before the time is `S`. Taking it would put every Laurier class on a
+ * Saturday. Three consecutive letters is what the grid can never have and what
+ * `Tuesday,Thursday` always does.
+ */
+function standaloneDays(text: string): number[] | null {
+  if (!/[A-Za-z]{3}/.test(text)) return null;
+  const days = parseDayList(text);
+  return days && days.length ? days : null;
+}
+
+/**
+ * `Building: Arts Building Room: 1E1` → `Arts Building 1E1`.
+ *
+ * Banner labels the parts instead of printing a room code, and puts them at
+ * the end of the meeting line rather than in a column of their own, so neither
+ * `readRoom` nor `readNamedRoom` sees anything. The labels make this the one
+ * unambiguous room format here — nothing has to be inferred from shape — so it
+ * is tried before either of them.
+ */
+const LABELLED_ROOM_RE = /\bbuilding\s*[:.]?\s*(.+?)\s+room\s*[:.]?\s*([A-Za-z0-9-]{1,10})\s*$/i;
+const BARE_ROOM_LABEL_RE = /\broom\s*[:.]?\s*([A-Za-z0-9-]{1,10})\s*$/i;
+
+function readLabelledRoom(text: string): string | null {
+  const both = LABELLED_ROOM_RE.exec(text);
+  if (both) {
+    const building = both[1].trim();
+    const room = both[2];
+    if (/^tba$/i.test(room)) return null;
+    const full = building && !/^tba$/i.test(building) ? `${building} ${room}` : room;
+    return full.length <= 40 ? full : room;
+  }
+  const only = BARE_ROOM_LABEL_RE.exec(text);
+  if (only && !/^tba$/i.test(only[1])) return only[1];
+  return null;
+}
+
 /**
  * The room for one meeting: whatever follows the time on the same line, or the
  * cell after the one the time is in.
  */
 function roomNear(line: string, time: TimeMatch, cells: string[]): string | null {
-  const direct = readRoom(line.slice(time.end));
+  const tail = line.slice(time.end);
+
+  const labelled = readLabelledRoom(tail);
+  if (labelled) return labelled;
+
+  const direct = readRoom(tail);
   if (direct) return direct;
 
   // Only cells to the right of the time can be its room. Looking leftward
@@ -900,8 +1204,29 @@ function roomNear(line: string, time: TimeMatch, cells: string[]): string | null
   const timeCell = cells.findIndex((cell) => timeRanges(cell).length > 0);
   const after = timeCell === -1 ? [] : cells.slice(timeCell + 1);
   for (const cell of after) {
-    const room = readRoom(cell);
+    const room = readRoom(cell) ?? readNamedRoom(cell);
     if (room) return room;
   }
   return null;
+}
+
+/**
+ * A building spelled out, then a room number: `Bricker Academic Building 101`,
+ * `Lazaridis Hall 1011`, `Peters Building P1025`.
+ *
+ * Banner prints the building's name where the other portals print its code, so
+ * `ROOM_RE` reads nothing at all and every Laurier card loses its room. That
+ * matters more here than it looks: a room is the entire point of knowing a
+ * friend is in class right now.
+ *
+ * Used only on a cell sitting to the right of a time, never as the guard in
+ * `readCourseCode`. A pattern this wide would start rejecting real course
+ * headers if it were asked whether an unannounced line is a room.
+ */
+const NAMED_ROOM_RE = /^(?:[A-Z][A-Za-z.'-]{1,14}\s+){1,4}[A-Z]?\d{1,4}[A-Z]?$/;
+
+function readNamedRoom(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 40) return null;
+  return NAMED_ROOM_RE.test(trimmed) ? trimmed : null;
 }

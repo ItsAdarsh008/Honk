@@ -28,7 +28,21 @@ export type ValidationResult =
  * Loose enough to admit all of them and still tight enough that these are the
  * only thing that reaches a row other students share.
  */
-const SUBJECT_RE = /^[A-Z]{2,10}(?:\/[A-Z]{2,10})?$/;
+/**
+ * A subject code, or a subject spelled out.
+ *
+ * The first form is the one every portal but Banner prints: `CS`, `AP/ECON`.
+ * The second is LORIS, which names the department instead — `MATHEMATICS`,
+ * `DATA SCIENCE` — and cannot be folded into the first because Laurier's real
+ * codes are not derivable from its names (Mathematics is `MA`, Data Science is
+ * `DATA`, Business is `BU`). Storing the name is the only reading of that page
+ * that does not involve inventing a code, and a wrong code would be written
+ * into the row every other student in that class points at.
+ *
+ * Still letters and single spaces only, and still capped — this ends up in a
+ * unique key and on a card.
+ */
+const SUBJECT_RE = /^[A-Z]{2,10}(?:\/[A-Z]{2,10})?$|^[A-Z]{2,}(?: [A-Z]{2,}){0,2}$/;
 const CATALOG_RE = /^\d[0-9A-Z]{0,6}$/;
 const COMPONENT_RE = /^[A-Z]{2,4}$/;
 const SECTION_CODE_RE = /^[A-Z0-9]{1,6}$/;

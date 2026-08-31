@@ -186,3 +186,35 @@ describe("validateSchedule", () => {
     if (result.ok) expect(result.value.courses[0].status).toBe("enrolled");
   });
 });
+
+/**
+ * LORIS names the department instead of coding it, so the subject arriving
+ * here can be `MATHEMATICS` or `DATA SCIENCE` rather than `CS`. It is still a
+ * key other students' rows point at, so the fence stays: letters and single
+ * spaces, nothing else.
+ */
+describe("a subject spelled out the way Banner prints it", () => {
+  const withSubject = (subject: string) => ({
+    ...GOOD,
+    courses: [{ ...GOOD.courses[0], subject }],
+  });
+
+  it("accepts a one-word and a two-word department name", () => {
+    for (const subject of ["MATHEMATICS", "DATA SCIENCE", "BUSINESS", "AP/ECON"]) {
+      const result = validateSchedule(withSubject(subject));
+      expect(result.ok, subject).toBe(true);
+    }
+  });
+
+  it("still refuses anything that is not a name", () => {
+    // A padded one is trimmed rather than refused, like every other field.
+    for (const subject of ["MATH 135!", "A", "MATH  135", "MATH-135", "1234", "MATH_135"]) {
+      const result = validateSchedule(withSubject(subject));
+      expect(result.ok, subject).toBe(false);
+    }
+  });
+
+  it("still refuses one longer than the column", () => {
+    expect(validateSchedule(withSubject("A".repeat(22))).ok).toBe(false);
+  });
+});
