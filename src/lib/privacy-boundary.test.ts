@@ -17,10 +17,49 @@ import { describe, expect, it } from "vitest";
 
 const SRC = join(process.cwd(), "src");
 
+interface SourceFile {
+  path: string;
+  source: string;
+}
+
+function queriesSource(files: SourceFile[]): string {
+  const queries = files.find((f) => f.path === join("src", "lib", "overlap", "queries.ts"));
+  expect(queries, "overlap/queries.ts is missing").toBeDefined();
+  return queries!.source;
+}
+
+/**
+ * One exported function's own source.
+ *
+ * Slicing to the next `export` drags the *following* function's doc comment in
+ * with it, so a neighbour that merely mentions meetings could fail a test
+ * about this function — which is exactly what happened the first time a new
+ * query was added next to `getClassmates`. Cutting at the trailing comment
+ * makes each of these tests examine the thing it names and nothing else.
+ */
+function functionSource(body: string, name: string): string {
+  const start = body.indexOf(`export async function ${name}`);
+  if (start === -1) return "";
+  const end = body.indexOf("\nexport ", start + 1);
+  const slice = body.slice(start, end === -1 ? undefined : end);
+  const trailingComment = slice.lastIndexOf("\n/**");
+  return trailingComment === -1 ? slice : slice.slice(0, trailingComment);
+}
+
 /** The only modules allowed to read the sensitive tables. */
 const ENFORCEMENT_POINTS = [
   join("src", "lib", "overlap", "queries.ts"),
   join("src", "lib", "friends.ts"),
+  /*
+   * Study groups. Added deliberately and not lightly — a third enforcement
+   * point is a third place the rules can drift out of step with the other two.
+   * It earns its place by needing `enrollments` for the one check the whole
+   * feature rests on (you may only touch a group for a class you are in) and
+   * `users` to name the members, and by never reading a meeting: the group's
+   * free time is answered by `getStudyGroupNextGap` next door, which is
+   * asserted below.
+   */
+  join("src", "lib", "study-groups.ts"),
 ];
 
 /** Self-scoped writes and auth, which never read another user's rows. */
@@ -53,7 +92,14 @@ const ANONYMOUS_READS = [join("src", "lib", "invite.ts"), join("src", "lib", "st
  */
 const OPERATOR_READS = [join("src", "lib", "admin", "stats.ts")];
 
-const SENSITIVE_TABLES = ["enrollments", "meetings", "users"];
+/**
+ * The tables a route or a component may not import.
+ *
+ * `studyGroupMembers` is on the list for the same reason the others are: who
+ * is in a group is a fact about people, and reading it outside an enforcement
+ * point would be a way to enumerate them without the enrolment check.
+ */
+const SENSITIVE_TABLES = ["enrollments", "meetings", "users", "studyGroupMembers"];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -108,19 +154,59 @@ describe("privacy boundary", () => {
   });
 
   it("never selects a meeting inside getClassmates", () => {
-    const queries = files.find((f) => f.path === join("src", "lib", "overlap", "queries.ts"));
-    expect(queries).toBeDefined();
-
-    const body = queries!.source;
-    const start = body.indexOf("export async function getClassmates");
-    expect(start).toBeGreaterThan(-1);
-    const end = body.indexOf("\nexport ", start + 1);
-    const fn = body.slice(start, end === -1 ? undefined : end);
+    const fn = functionSource(queriesSource(files), "getClassmates");
+    expect(fn, "getClassmates is missing").not.toBe("");
 
     // Identity only: a classmate result must not touch the meetings table.
     expect(fn).not.toContain("meetings");
     expect(fn).not.toContain("location");
     expect(fn).not.toContain("startMin");
+  });
+
+  /**
+   * The request-context read. It is allowed to answer without the friend graph
+   * — the whole point is that these two are *not* friends yet — so what keeps
+   * it honest is the other two fences: it may only look inside the caller's
+   * own sections, and it may not select a time or a room.
+   */
+  it("keeps getSharedSectionsWith to the caller's own sections, and to identity", () => {
+    const fn = functionSource(queriesSource(files), "getSharedSectionsWith");
+    expect(fn, "getSharedSectionsWith is missing").not.toBe("");
+
+    // No time and no room can come out of this path.
+    expect(fn).not.toContain("meetings");
+    expect(fn).not.toContain("location");
+    expect(fn).not.toContain("startMin");
+
+    // The candidate sections are the caller's own, and blocks are subtracted.
+    expect(fn).toContain("eq(enrollments.userId, userId)");
+    expect(fn).toContain("blockedUserIds(");
+  });
+
+  /**
+   * Study groups are the one place free time crosses between people who are
+   * not accepted friends, so the two fences that replace the friend check are
+   * asserted rather than trusted: membership is checked on every read of the
+   * group's week, and the module that owns membership never reads a meeting.
+   */
+  it("gates a study group's free time on membership, and keeps times out of study-groups.ts", () => {
+    const gap = functionSource(queriesSource(files), "getStudyGroupNextGap");
+    expect(gap, "getStudyGroupNextGap is missing").not.toBe("");
+    expect(gap).toContain("isGroupMember(");
+
+    const groups = files.find((f) => f.path === join("src", "lib", "study-groups.ts"));
+    expect(groups, "study-groups.ts is missing").toBeDefined();
+
+    // Membership and names only. Every question about time is asked next door.
+    const imported = /import\s*\{([^}]*)\}\s*from\s*["'][^"']*db\/schema["']/s.exec(
+      groups!.source,
+    );
+    const names = (imported?.[1] ?? "").split(",").map((s) => s.trim());
+    expect(names).not.toContain("meetings");
+    expect(groups!.source).not.toContain("startMin");
+
+    // And the enrolment check the whole feature rests on is really there.
+    expect(groups!.source).toContain("eq(enrollments.userId, userId)");
   });
 
   it("gates every friends-only read on areFriends or friendIds", () => {

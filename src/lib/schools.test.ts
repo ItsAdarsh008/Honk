@@ -83,11 +83,16 @@ describe("the registry", () => {
     ]);
   });
 
-  it("has everything but Waterloo in beta", () => {
+  it("has everything but Waterloo and Laurier in beta", () => {
     // The switch is schools-out-of-beta.ts. If this fails, either a school
     // earned its way out or somebody edited that file without meaning to.
+    //
+    // Waterloo cleared the bar on a real Quest paste; Laurier on a real LORIS
+    // one, which is the `LORIS_REAL` fixture in `parsers/generic.test.ts`.
+    // Both halves of that sentence are the bar — a school belongs here when
+    // there is a real paste in the tests, and not before.
     const outOfBeta = SCHOOLS.filter((s) => !s.beta).map((s) => s.id);
-    expect(outOfBeta).toEqual(["waterloo"]);
+    expect(outOfBeta).toEqual(["waterloo", "laurier"]);
   });
 
   it("only lets a live school be out of beta", () => {

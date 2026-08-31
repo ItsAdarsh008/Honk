@@ -54,6 +54,11 @@ interface Props {
   onSelectSection?: (sectionId: number) => void;
   /** The section currently open, so its block can show it. */
   selectedSectionId?: number | null;
+  /**
+   * One block to point at, for somebody who has not yet worked out that the
+   * blocks are tappable. Drawn in the accent and left alone otherwise.
+   */
+  hintSectionId?: number | null;
 }
 
 const HOUR = 60;
@@ -65,6 +70,7 @@ export function ScheduleGrid({
   showRooms = true,
   onSelectSection,
   selectedSectionId = null,
+  hintSectionId = null,
 }: Props) {
   const model = useMemo(() => build(meetings), [meetings]);
 
@@ -193,6 +199,7 @@ export function ScheduleGrid({
                     type="button"
                     className="sched-block sched-block-open"
                     data-selected={meeting.sectionId === selectedSectionId}
+                    data-hint={meeting.sectionId === hintSectionId}
                     style={style}
                     title={label}
                     aria-label={`${label}. Show who is in this class.`}

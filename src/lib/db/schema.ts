@@ -289,6 +289,55 @@ export const friendships = pgTable(
 );
 
 /* ------------------------------------------------------------------ *
+ * Study groups
+ *
+ * A group belongs to a section, and that is the whole membership rule: you can
+ * join a study group for a class you are in, and no other. It needs no term
+ * column and no school column because the section already carries both, and a
+ * section cannot span two of either.
+ *
+ * Deliberately two small tables and no third. There is no chat here, no
+ * scheduled meeting row, no owner-transfer, no invite token — every one of
+ * those is a feature that has to be maintained forever to answer a question
+ * the group can answer in the group chat they already have. What Honk knows
+ * that the group chat does not is *when all of them are free*, and that is
+ * computed from the members, not stored.
+ * ------------------------------------------------------------------ */
+
+export const studyGroups = pgTable(
+  "study_groups",
+  {
+    id: serial("id").primaryKey(),
+    sectionId: integer("section_id")
+      .notNull()
+      .references(() => sections.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdById: uuid("created_by_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("study_groups_section_idx").on(t.sectionId)],
+);
+
+export const studyGroupMembers = pgTable(
+  "study_group_members",
+  {
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => studyGroups.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.groupId, t.userId] }),
+    index("study_group_members_user_idx").on(t.userId),
+  ],
+);
+
+/* ------------------------------------------------------------------ *
  * Relations
  * ------------------------------------------------------------------ */
 
@@ -316,6 +365,10 @@ export type Course = typeof courses.$inferSelect;
 export type Section = typeof sections.$inferSelect;
 export type Meeting = typeof meetings.$inferSelect;
 export type Friendship = typeof friendships.$inferSelect;
+export type StudyGroup = typeof studyGroups.$inferSelect;
+
+/** The longest a group name may be, enforced on the way in. */
+export const STUDY_GROUP_NAME_MAX = 60;
 
 /** Ordered-pair helper shared by every friendship query. */
 export function orderedPair(a: string, b: string): { userAId: string; userBId: string } {

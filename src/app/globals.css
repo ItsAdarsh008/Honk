@@ -420,6 +420,38 @@ body {
   outline-color: var(--clay);
 }
 
+/* The block the one-time nudge is pointing at. The accent and the slow ring
+   are the only thing linking the callout above the grid to a class inside it,
+   which is cheaper and steadier than trying to float a bubble over a column
+   seventy pixels wide. It stops the moment the person taps anything. */
+.sched-block-open[data-hint="true"] {
+  outline-color: var(--clay);
+  animation: hint-ring 2200ms ease-in-out infinite;
+}
+
+@keyframes hint-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--clay-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--clay-soft);
+  }
+}
+
+/* The nudge itself. Deliberately not a card: it is a remark about the grid,
+   not another thing on the page competing with it. */
+.hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--clay);
+  border-radius: 12px;
+  background: var(--clay-soft);
+}
+
 /* A friend is in this room. One dot, top-right, in the accent — the only
    thing on the grid allowed to use it besides time pressure. */
 .sched-block-dot {
@@ -537,4 +569,43 @@ body {
   font-weight: 600;
   color: #f0b487;
   cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ *
+ * The friend count
+ *
+ * A number worth watching go up, and the one number in Honk that is. Hairline
+ * and quiet at rest; the accent is reserved for the hover, so it reads as a
+ * fact on the page rather than a badge demanding to be cleared.
+ * ------------------------------------------------------------------ */
+
+.friend-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.friend-count:hover {
+  border-color: var(--clay);
+  color: var(--clay);
+}
+
+.friend-count-n {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.friend-count-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.friend-count:hover .friend-count-label {
+  color: inherit;
 }

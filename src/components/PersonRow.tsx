@@ -43,12 +43,19 @@ export function PersonRow({
   person,
   trailing,
   viewerSchoolId,
+  note,
 }: {
   person: Person;
   /** Replaces the action button — used for "free until 2:00" and gap times. */
   trailing?: React.ReactNode;
   /** The viewer's school, so only a *different* one gets labelled. */
   viewerSchoolId?: string;
+  /**
+   * Why this person is on the screen — currently the class a request came out
+   * of. A third line under the handle rather than a chip on the right, because
+   * it explains the row and the right-hand side is where the row is answered.
+   */
+  note?: React.ReactNode;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -98,6 +105,7 @@ export function PersonRow({
           @{person.handle ?? "unknown"}
           {elsewhere && <span className="ml-1.5 text-[var(--ink-soft)]">{elsewhere.short}</span>}
         </span>
+        {note && <span className="block truncate text-[12px] text-[var(--ink-soft)]">{note}</span>}
         {error && <span className="block text-[12px] text-[#a8442c]">{error}</span>}
       </div>
 

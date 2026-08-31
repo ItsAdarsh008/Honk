@@ -19,7 +19,8 @@
 
 import { and, desc, eq, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
 import { getDb, type Db } from "../db";
-import { courses, enrollments, meetings, sections, users } from "../db/schema";
+import { courses, enrollments, meetings, sections, studyGroupMembers, users } from "../db/schema";
+import { isGroupMember } from "../study-groups";
 import {
   areFriends,
   blockedUserIds,
@@ -98,6 +99,20 @@ export interface ClassCount {
   otherCount: number;
   /** How many of those have opted in to being seen. */
   visibleCount: number;
+}
+
+/**
+ * One class the viewer and somebody else are both in.
+ *
+ * Always a section the *viewer* is enrolled in — that is what makes this safe
+ * to show. It names a room nobody was already in and reveals no time.
+ */
+export interface SharedClass {
+  sectionId: number;
+  /** "ECON 120" */
+  code: string;
+  component: string;
+  sectionCode: string;
 }
 
 export interface FreeFriend {
@@ -489,6 +504,97 @@ export async function getClassmates(
 }
 
 /**
+ * Which of the caller's own classes a given set of people are also in.
+ *
+ * This exists so an incoming friend request can say why it happened. A request
+ * from a name you have never seen is a thing most people ignore; the same
+ * request saying *in your ECON 120 lecture* is a thing most people accept, and
+ * more to the point it is a thing they can judge.
+ *
+ * Three things bound what it gives away, and they are the reason it is allowed
+ * to exist at all:
+ *
+ *  - **Only sections the caller is in.** The caller learns nothing about the
+ *    other person's timetable beyond the part they were already standing in.
+ *    A class the caller does not take can never appear here.
+ *  - **Identity and code only.** No meetings are selected, so no room and no
+ *    time can come out of this path, which is the same fence `getClassmates`
+ *    stands behind.
+ *  - **Blocked pairs are subtracted**, on both sides, as everywhere else.
+ *
+ * It deliberately does *not* require `discoverable`. That flag governs whether
+ * somebody is listed to strangers who did not ask for them; this answers a
+ * question about a person who has just deliberately introduced themselves by
+ * name. Requiring it would blank out the common case — discoverability is off
+ * by default, so most requests come from someone not in any roster — and would
+ * leave the recipient with exactly the unexplained request from a stranger
+ * that this is here to prevent.
+ *
+ * Callers pass the ids they already hold; nothing here enumerates users.
+ */
+export async function getSharedSectionsWith(
+  userId: string,
+  otherIds: string[],
+  termCode: string,
+  db: Db = getDb(),
+): Promise<Map<string, SharedClass[]>> {
+  const out = new Map<string, SharedClass[]>();
+
+  const blocked = new Set(await blockedUserIds(userId, db));
+  const wanted = [...new Set(otherIds)].filter((id) => id !== userId && !blocked.has(id));
+  if (!wanted.length) return out;
+
+  const mine = await db
+    .select({
+      sectionId: sections.id,
+      subject: courses.subject,
+      catalog: courses.catalog,
+      component: sections.component,
+      sectionCode: sections.sectionCode,
+    })
+    .from(enrollments)
+    .innerJoin(sections, eq(sections.id, enrollments.sectionId))
+    .innerJoin(courses, eq(courses.id, sections.courseId))
+    .where(and(eq(enrollments.userId, userId), eq(enrollments.termCode, termCode)));
+
+  if (!mine.length) return out;
+
+  const rows = await db
+    .select({ userId: enrollments.userId, sectionId: enrollments.sectionId })
+    .from(enrollments)
+    .innerJoin(users, eq(users.id, enrollments.userId))
+    .where(
+      and(
+        inArray(
+          enrollments.sectionId,
+          mine.map((m) => m.sectionId),
+        ),
+        inArray(enrollments.userId, wanted),
+        isNotNull(users.verifiedAt),
+      ),
+    );
+
+  const bySection = new Map(mine.map((m) => [m.sectionId, m]));
+  for (const row of rows) {
+    const section = bySection.get(row.sectionId);
+    if (!section) continue;
+    const list = out.get(row.userId) ?? [];
+    list.push({
+      sectionId: section.sectionId,
+      code: `${section.subject} ${section.catalog}`,
+      component: section.component,
+      sectionCode: section.sectionCode,
+    });
+    out.set(row.userId, list);
+  }
+
+  for (const list of out.values()) {
+    list.sort((a, b) => a.code.localeCompare(b.code) || a.component.localeCompare(b.component));
+  }
+  return out;
+}
+
+/**
  * Which accepted friends are in each of the caller's sections.
  *
  * This is what turns the week grid from a timetable into the thing Honk is
@@ -660,6 +766,54 @@ export async function getNextSharedGapWith(
   const week = await getSharedGapsWith(userId, friendId, termCode, db);
   if (!week) return null;
   return nextSharedGap(week, now.weekday, now.minute);
+}
+
+/**
+ * The next window a whole study group shares.
+ *
+ * The second and only other place free time crosses between people who are not
+ * accepted friends, and it is gated on the thing that makes that all right:
+ * `isGroupMember`, checked here rather than trusted from the caller. Somebody
+ * who has left the group gets null on the very next read.
+ *
+ * `missing` is the number of members Honk cannot see a week for, and it is
+ * returned rather than quietly ignored because the answer means something
+ * different without it. A group of six where four have not pasted is not free
+ * on Thursday afternoon — it is a group of two that is, and saying so is the
+ * difference between a useful answer and a confident wrong one. The same
+ * reasoning as `busyWeeksFor`: absent is not the same as free.
+ */
+export async function getStudyGroupNextGap(
+  userId: string,
+  groupId: number,
+  termCode: string,
+  now: { weekday: number; minute: number },
+  db: Db = getDb(),
+): Promise<{ weekday: number; interval: Interval; counted: number; missing: number } | null> {
+  if (!(await isGroupMember(userId, groupId, db))) return null;
+
+  const rows = await db
+    .select({ userId: studyGroupMembers.userId })
+    .from(studyGroupMembers)
+    .where(eq(studyGroupMembers.groupId, groupId));
+
+  const others = rows.map((row) => row.userId).filter((id) => id !== userId);
+  const weeks = await weeksForViewerAnd(userId, others, termCode, db);
+
+  const mine = weeks.get(userId);
+  if (!mine) return null;
+
+  const present: WeekBusy[] = [mine];
+  let missing = 0;
+  for (const id of others) {
+    const theirs = weeks.get(id);
+    if (theirs) present.push(theirs);
+    else missing += 1;
+  }
+
+  const next = nextSharedGap(sharedGapsForWeek(present), now.weekday, now.minute);
+  if (!next) return null;
+  return { ...next, counted: present.length, missing };
 }
 
 /**

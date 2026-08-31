@@ -27,6 +27,20 @@ export async function generateMetadata({
       title,
       description: "Paste your class schedule and see which classes you share.",
     },
+    /*
+     * Twitter falls back to the Open Graph tags for everything it is not given
+     * outright, and the root layout gives it a title — which meant an invite
+     * pasted anywhere reading the twitter card announced the product rather
+     * than the person. Both cards now say the same thing.
+     *
+     * Neither block names an image: `opengraph-image.tsx` in this folder is
+     * the image for this route, and Next fills both sets of tags in from it.
+     */
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: "Paste your class schedule and see which classes you share.",
+    },
   };
 }
 

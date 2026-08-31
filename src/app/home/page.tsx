@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOptionalUser } from "@/lib/auth/current";
 import { hasProfile } from "@/lib/auth/session";
-import { listIncomingRequests } from "@/lib/friends";
+import { friendIds, listIncomingRequests } from "@/lib/friends";
 import {
   getCurrentTermCode,
   getFreeNow,
@@ -11,7 +11,11 @@ import {
   getFriendsWithNextGap,
   getMyClassesWithCounts,
   getMySchedule,
+  getSharedSectionsWith,
+  getStudyGroupNextGap,
 } from "@/lib/overlap/queries";
+import { listMyGroups } from "@/lib/study-groups";
+import { sharedClassNote } from "@/lib/shared-class";
 import {
   campusNow,
   formatDuration,
@@ -27,6 +31,7 @@ import { WeekWithPeople, type SectionSummary } from "@/components/WeekWithPeople
 import { ShareButton } from "@/components/ShareButton";
 import { PrivacyPrompt } from "@/components/PrivacyPrompt";
 import { PasteFlow } from "@/components/PasteFlow";
+import { FriendCount } from "@/components/FriendCount";
 import { schoolOrDefault } from "@/lib/schools";
 
 export const metadata: Metadata = { title: "Your week" };
@@ -70,14 +75,39 @@ export default async function HomePage() {
   }
 
   const now = campusNow();
-  const [classes, schedule, friends, requests, freeNow, friendsBySection] = await Promise.all([
-    getMyClassesWithCounts(user.id, termCode),
-    getMySchedule(user.id, termCode),
-    getFriendsWithNextGap(user.id, termCode, now),
-    listIncomingRequests(user.id),
-    getFreeNow(user.id, termCode, now),
-    getFriendsBySection(user.id, termCode),
-  ]);
+  const [classes, schedule, friends, requests, freeNow, friendsBySection, allFriendIds] =
+    await Promise.all([
+      getMyClassesWithCounts(user.id, termCode),
+      getMySchedule(user.id, termCode),
+      getFriendsWithNextGap(user.id, termCode, now),
+      listIncomingRequests(user.id),
+      getFreeNow(user.id, termCode, now),
+      getFriendsBySection(user.id, termCode),
+      friendIds(user.id),
+    ]);
+
+  /*
+   * Everyone you have added, which is not what `friends` holds.
+   *
+   * `getFriendsWithNextGap` drops anybody with no schedule saved and anybody
+   * with no gap in common, both of which are right for a list of *when to see
+   * them* and wrong for a count of *how many there are*. Counting that list
+   * told somebody with five friends who had not pasted yet that Honk needed
+   * one other person to be worth anything.
+   */
+  const friendCount = allFriendIds.length;
+
+  /*
+   * Why each request happened, which is nearly always "we are in the same
+   * lecture". A request with a reason attached is one somebody can judge; one
+   * without is a name they will leave sitting there. Asked only about the
+   * people already asking, and only about classes this viewer is in.
+   */
+  const sharedWithRequesters = await getSharedSectionsWith(
+    user.id,
+    requests.map((request) => request.profile.id),
+    termCode,
+  );
 
   const courseColors = assignCourseColors(schedule.map((c) => `${c.subject} ${c.catalog}`));
   const countsBySection = new Map(classes.map((c) => [c.sectionId, c]));
@@ -116,10 +146,29 @@ export default async function HomePage() {
     })),
   );
 
+  /*
+   * The groups, and the next window each one shares.
+   *
+   * One query per group rather than one for all of them, which is fine at the
+   * size this can be — a group is per section, and nobody is in twelve — and
+   * `getStudyGroupNextGap` is where the membership check lives, so asking it
+   * once per group is also asking it once per answer.
+   */
+  const myGroups = await listMyGroups(user.id);
+  const groupGaps = new Map(
+    await Promise.all(
+      myGroups.map(
+        async (group) =>
+          [group.id, await getStudyGroupNextGap(user.id, group.id, termCode, now)] as const,
+      ),
+    ),
+  );
+  const codeBySection = new Map(sections.map((s) => [s.sectionId, s.code]));
+
   const friendsInClasses = new Set(
     [...friendsBySection.values()].flatMap((list) => list.map((f) => f.id)),
   ).size;
-  const nobodyYet = friends.length === 0 && requests.length === 0;
+  const nobodyYet = friendCount === 0 && requests.length === 0;
 
   return (
     <div className="space-y-10">
@@ -159,7 +208,10 @@ export default async function HomePage() {
               : "Everyone you add makes the week below more useful."}
           </p>
         </div>
-        <ShareButton handle={user.handle} label="Send my link" />
+        <div className="flex shrink-0 items-center gap-2">
+          <FriendCount count={friendCount} />
+          <ShareButton handle={user.handle} label="Send my link" />
+        </div>
       </section>
 
       {/* Free right now leads only when there is something in it. */}
@@ -185,7 +237,7 @@ export default async function HomePage() {
         </section>
       )}
 
-      <section className="space-y-3">
+      <section className="space-y-3" id="people">
         <h2 className="section-label">Your people</h2>
 
         {requests.length > 0 && (
@@ -200,6 +252,7 @@ export default async function HomePage() {
                   key={request.profile.id}
                   person={{ ...request.profile, relationship: "request_received" }}
                   viewerSchoolId={user.schoolId}
+                  note={sharedClassNote(sharedWithRequesters.get(request.profile.id) ?? [])}
                 />
               ))}
             </ul>
@@ -236,6 +289,54 @@ export default async function HomePage() {
           )
         )}
       </section>
+
+      {myGroups.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="section-label">Study groups</h2>
+          <div className="card px-4 py-1">
+            <ul className="divide-y divide-[var(--border)]">
+              {myGroups.map((group) => {
+                const gap = groupGaps.get(group.id) ?? null;
+                return (
+                  <li key={group.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <span className="block truncate text-[15px] font-medium">{group.name}</span>
+                      <span className="mono block truncate text-[12px] text-[var(--ink-faint)]">
+                        {group.memberCount} {group.memberCount === 1 ? "member" : "members"}
+                        {codeBySection.get(group.sectionId) && (
+                          <span className="ml-1.5">{codeBySection.get(group.sectionId)}</span>
+                        )}
+                      </span>
+                    </div>
+                    <span className="mono shrink-0 text-right text-[12px] text-[var(--ink-soft)]">
+                      {gap ? (
+                        <>
+                          {weekdayShort(gap.weekday)}{" "}
+                          {formatRange(gap.interval.start, gap.interval.end)}
+                          <span className="block text-[var(--ink-faint)]">
+                            {/*
+                              Whose week this actually is. A group of six where
+                              four have not pasted is not free on Thursday — a
+                              group of two is, and saying "all free" over the
+                              top of that is exactly the confident wrong answer
+                              the rest of this app refuses to give.
+                            */}
+                            {gap.missing > 0
+                              ? `${gap.counted} of ${group.memberCount} free`
+                              : "all free"}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[var(--ink-faint)]">no shared gap</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-3">
