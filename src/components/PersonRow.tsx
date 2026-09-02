@@ -105,7 +105,12 @@ export function PersonRow({
           @{person.handle ?? "unknown"}
           {elsewhere && <span className="ml-1.5 text-[var(--ink-soft)]">{elsewhere.short}</span>}
         </span>
-        {note && <span className="block truncate text-[12px] text-[var(--ink-soft)]">{note}</span>}
+        {/*
+          Wraps rather than truncates. This line exists to say why a stranger
+          is asking to be added, and "In your ECON 120 an…" answers the
+          question with an ellipsis — on a phone, which is where it is read.
+        */}
+        {note && <span className="block text-[12px] leading-snug text-[var(--ink-soft)]">{note}</span>}
         {error && <span className="block text-[12px] text-[#a8442c]">{error}</span>}
       </div>
 

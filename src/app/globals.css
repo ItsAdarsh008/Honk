@@ -581,16 +581,64 @@ body {
 
 .friend-count {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  padding: 7px 10px 7px 12px;
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   background: var(--surface);
-  transition: border-color 140ms ease, color 140ms ease;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
 }
 
 .friend-count:hover {
+  border-color: var(--clay);
+  color: var(--clay);
+  background: var(--clay-soft);
+}
+
+.friend-count:active {
+  border-color: var(--clay-hover);
+}
+
+/* The mark that says there is something behind this. It points down when the
+   list is folded and up when it is open, which is the whole state of the
+   control expressed without a word. */
+.friend-count-chevron {
+  transition: transform 160ms ease;
+  opacity: 0.7;
+}
+
+.friend-count:hover .friend-count-chevron {
+  opacity: 1;
+}
+
+.friend-count[data-open="true"] .friend-count-chevron {
+  transform: rotate(180deg);
+}
+
+/* Standing in for the folded list, so it can be opened from where it is
+   missing as well as from the count at the top of the page. */
+.reveal-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-card);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink-soft);
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.reveal-row:hover {
   border-color: var(--clay);
   color: var(--clay);
 }
@@ -608,4 +656,80 @@ body {
 
 .friend-count:hover .friend-count-label {
   color: inherit;
+}
+
+/* ------------------------------------------------------------------ *
+ * The invite QR
+ *
+ * A phone-sized affordance for a phone-sized moment: standing in front of
+ * somebody during frosh week. Hidden above the phone breakpoint, because the
+ * whole point is a screen you can hold up.
+ * ------------------------------------------------------------------ */
+
+.qr-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.qr-button:hover,
+.qr-button:active {
+  border-color: var(--clay);
+  color: var(--clay);
+  background: var(--clay-soft);
+}
+
+.qr-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(26 25 23 / 0.55);
+  animation: rise 160ms ease-out both;
+}
+
+.qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 340px;
+  padding: 22px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+/* Always on white, whatever the page is doing. A dark-mode QR with a cream
+   ground reads at half the distance, and distance is the whole feature. */
+.qr-code {
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  line-height: 0;
+}
+
+/* Phone only, and stated here rather than with a `sm:hidden` on the element:
+   this stylesheet is loaded after Tailwind's utilities, so `.qr-button`'s own
+   `display` quietly beat the utility's `display: none` and the button turned
+   up on a laptop, where a code you cannot hold out to somebody means nothing.
+   It has to come after the rule it is overriding, for the same reason. */
+@media (min-width: 640px) {
+  .qr-button {
+    display: none;
+  }
 }
