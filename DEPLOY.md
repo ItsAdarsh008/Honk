@@ -71,6 +71,29 @@ and press Run. The transaction wrapper is what makes that safe: a web editor
 that mangles the paste produces a syntax error and a rollback, never a
 half-applied schema.
 
+### The `paste_samples` table — run before merging
+
+Adds one table, which stores the pastes the parser could not read at a beta
+school. Nothing existing reads it, so `db:push` is enough on its own — there is
+no data to backfill and no constraint to replace:
+
+```bash
+npm run db:push
+```
+
+**Getting the order wrong here is not the outage the schools migration was.**
+Worth saying plainly, because the rule above ("the migration goes first and the
+merge second") is stated absolutely and this is the exception that proves it is
+about *reads*. Nothing in a sign-in path touches `paste_samples`; the only
+writer is `/api/schedule/sample`, which swallows its own failures by design, so
+deploying before the push costs you the samples from that window and nothing
+else. Run it first anyway — the cost of remembering the rule is lower than the
+cost of deciding each time whether this one is the safe kind.
+
+What lands in the table, and why it is drawn this narrowly, is in the comment on
+`pasteSamples` in `src/lib/db/schema.ts`. The short version: beta schools only,
+failed readings only, no user id, no IP, ninety days.
+
 ---
 
 **Otherwise nothing blocking. Honk is ready for beta testers.**
@@ -90,9 +113,12 @@ Ask each of them for three things, in this order of usefulness:
 
 1. **Their Quest paste, if it fails.** The parser has now seen exactly one real
    paste, from one program. `CHANGELOG.md` lists what is still unexercised —
-   a dropped course above all, which fails silently by construction. Save any
-   paste that misbehaves into `quest-samples/` and run
-   `npx vite-node scripts/diagnose-paste.ts quest-samples/<file>`.
+   a dropped course above all, which fails silently by construction.
+
+   At a beta school you no longer have to ask: a failed reading is stored on its
+   own, and `npm run samples -- <school>` writes them to `paste-samples/` ready
+   for `diagnose-paste.ts`. Still ask at Waterloo, which is out of beta and
+   therefore records nothing — save those into `quest-samples/` by hand.
 2. **Whether the passkey worked first time**, and on what — iOS, Android,
    Windows Hello, a browser password manager. This is the one flow nobody
    outside this machine has exercised.

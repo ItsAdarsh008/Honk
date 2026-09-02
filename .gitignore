@@ -12,3 +12,6 @@ next-env.d.ts
 
 # Real Quest pastes, kept out of git: they are personal schedules.
 quest-samples/
+
+# Same, pulled out of the database by scripts/pull-samples.ts.
+paste-samples/

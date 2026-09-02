@@ -3,10 +3,16 @@
 /**
  * Paste → review.
  *
- * Parsing happens in the browser, so the raw paste never reaches the server
- * before the user has seen what was extracted and chosen to continue. The
- * review step appears the moment a paste parses — no "Continue" button between
- * pasting and the payoff.
+ * Parsing happens in the browser, so a paste that works never reaches the
+ * server before the user has seen what was extracted and chosen to continue.
+ * The review step appears the moment a paste parses — no "Continue" button
+ * between pasting and the payoff.
+ *
+ * A paste that does *not* work is sent, once, to `/api/schedule/sample`. That
+ * is the one exception to the sentence above and it is worth stating plainly:
+ * at a beta school, a failed reading is the only evidence the bug ever existed,
+ * and without it the student closes the tab and the bug leaves with them. See
+ * `schedule/samples.ts` for what is kept and for how long.
  *
  * The school decides which instructions are printed and which parser is tried
  * first. It does not decide what can be pasted: both parsers run on every
@@ -16,7 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { parseSchedule } from "@/lib/schedule/parse";
+import { parseSchedule, type ScheduleParseResult } from "@/lib/schedule/parse";
 import type { ParseResult } from "@/lib/schedule/types";
 import { savePending, clearPending } from "@/lib/pending";
 import { termName } from "@/lib/time";
@@ -27,6 +33,14 @@ import { readSchoolChoice, saveSchoolChoice } from "@/lib/school-choice";
 import { ScheduleGrid, type GridMeeting } from "./ScheduleGrid";
 import { CourseList } from "./CourseList";
 import { SchoolPicker } from "./SchoolPicker";
+
+/**
+ * How long the text has to sit still before a failed reading is reported.
+ *
+ * Long enough that typing, or a paste arriving in more than one event, settles
+ * into a single report rather than one per keystroke.
+ */
+const REPORT_DELAY_MS = 2000;
 
 interface Props {
   signedIn: boolean;
@@ -41,6 +55,9 @@ export function PasteFlow({ signedIn, schoolId = null }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  /** Pastes already reported this session, so a re-render cannot resend one. */
+  const reported = useRef<Set<string>>(new Set());
+  const reportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [handheld, setHandheld] = useState(false);
   const [chosen, setChosen] = useState<string>(schoolId ?? DEFAULT_SCHOOL_ID);
 
@@ -54,6 +71,13 @@ export function PasteFlow({ signedIn, schoolId = null }: Props) {
       if (remembered) setChosen(remembered);
     }
   }, [schoolId]);
+
+  // A pending report must not outlive the screen that scheduled it.
+  useEffect(() => {
+    return () => {
+      if (reportTimer.current) clearTimeout(reportTimer.current);
+    };
+  }, []);
 
   const pickSchool = useCallback((id: string) => {
     setChosen(id);
@@ -69,6 +93,43 @@ export function PasteFlow({ signedIn, schoolId = null }: Props) {
     [school.id],
   );
 
+  /*
+   * Reporting a reading that failed.
+   *
+   * Debounced, because this runs on every keystroke and a half-typed paste is
+   * not a failure worth keeping — only the text somebody stopped on is. Each
+   * distinct paste is sent at most once, so correcting a schedule and pasting
+   * again does not write the same row twice.
+   *
+   * Fire and forget in both directions: nothing is awaited, and a rejection is
+   * swallowed. The student is already looking at a paste that did not work and
+   * an error about the error would help nobody.
+   */
+  const reportTrouble = useCallback(
+    (value: string, parsed: ScheduleParseResult) => {
+      if (!school.beta) return;
+      if (parsed.courses.length > 0 && parsed.warnings.length === 0) return;
+
+      const text = value.trim();
+      if (text.length < 40 || reported.current.has(text)) return;
+      reported.current.add(text);
+
+      void fetch("/api/schedule/sample", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          schoolId: school.id,
+          parser: parsed.parser,
+          rawText: value,
+          courseCount: parsed.courses.length,
+          warnings: parsed.warnings,
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    },
+    [school.beta, school.id],
+  );
+
   const handleChange = useCallback(
     (value: string) => {
       setRaw(value);
@@ -79,8 +140,11 @@ export function PasteFlow({ signedIn, schoolId = null }: Props) {
       }
       const parsed = parse(value);
       setResult(parsed.courses.length ? parsed : null);
+
+      if (reportTimer.current) clearTimeout(reportTimer.current);
+      reportTimer.current = setTimeout(() => reportTrouble(value, parsed), REPORT_DELAY_MS);
     },
-    [parse],
+    [parse, reportTrouble],
   );
 
   const reset = useCallback(() => {

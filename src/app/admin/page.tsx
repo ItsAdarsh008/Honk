@@ -219,6 +219,7 @@ export default async function AdminPage() {
                 <th className="px-4 py-2.5 font-medium">University</th>
                 <th className="px-4 py-2.5 text-right font-medium">Accounts</th>
                 <th className="px-4 py-2.5 text-right font-medium">With a schedule</th>
+                <th className="px-4 py-2.5 text-right font-medium">Failed pastes</th>
               </tr>
             </thead>
             <tbody>
@@ -232,6 +233,17 @@ export default async function AdminPage() {
                   </td>
                   <td className="mono px-4 py-2.5 text-right tabular-nums">{s.users}</td>
                   <td className="mono px-4 py-2.5 text-right tabular-nums">{s.withSchedule}</td>
+                  {/*
+                    A count, never the text. Anything above zero is a parser bug
+                    with the evidence already saved — `npm run samples -- <id>`.
+                  */}
+                  <td
+                    className={`mono px-4 py-2.5 text-right tabular-nums ${
+                      s.failedPastes > 0 ? "text-[var(--clay)]" : "text-[var(--ink-faint)]"
+                    }`}
+                  >
+                    {s.failedPastes}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -16,7 +16,7 @@ import "server-only";
 
 import { desc, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, hasDatabase } from "../db";
-import { enrollments, meetings, sections, users } from "../db/schema";
+import { enrollments, meetings, pasteSamples, sections, users } from "../db/schema";
 import { LIVE_SCHOOLS, schoolOrDefault } from "../schools";
 
 export interface SchoolCount {
@@ -28,6 +28,15 @@ export interface SchoolCount {
   users: number;
   /** How many of those have actually pasted a schedule. */
   withSchedule: number;
+  /**
+   * Stored pastes the parser could not read, in the last ninety days.
+   *
+   * The number that separates the two readings of a zero above: users but no
+   * schedules and no failures means nobody tried, while users and failures
+   * means the parser is broken there. Run `npm run samples -- <school>` to get
+   * the text. Always 0 at a school out of beta, which records nothing.
+   */
+  failedPastes: number;
 }
 
 export interface DayCount {
@@ -61,8 +70,15 @@ export async function getAdminStats(): Promise<AdminStats | null> {
    * Postgres reads as a column of `enrollments` and rejects. Two queries and a
    * join in memory is both correct and, over ten rows, free.
    */
-  const [bySchool, scheduledBySchool, signupRows, sectionRows, meetingRows, enrollmentRows] =
-    await Promise.all([
+  const [
+    bySchool,
+    scheduledBySchool,
+    signupRows,
+    sectionRows,
+    meetingRows,
+    enrollmentRows,
+    failedBySchool,
+  ] = await Promise.all([
       db
         .select({
           schoolId: users.schoolId,
@@ -99,10 +115,21 @@ export async function getAdminStats(): Promise<AdminStats | null> {
       db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(sections),
       db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(meetings),
       db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(enrollments),
+
+      // A count, like everything else here. The text stays in the database and
+      // comes out through `scripts/pull-samples.ts`, never onto this page.
+      db
+        .select({
+          schoolId: pasteSamples.schoolId,
+          failed: sql<number>`count(*)`.mapWith(Number),
+        })
+        .from(pasteSamples)
+        .groupBy(pasteSamples.schoolId),
     ]);
 
   const counts = new Map(bySchool.map((row) => [row.schoolId, row.users]));
   const scheduled = new Map(scheduledBySchool.map((row) => [row.schoolId, row.withSchedule]));
+  const failed = new Map(failedBySchool.map((row) => [row.schoolId, row.failed]));
 
   /*
    * Every live school appears, including the ones with nobody in them. A zero
@@ -118,6 +145,7 @@ export async function getAdminStats(): Promise<AdminStats | null> {
       beta: school.beta,
       users: counts.get(school.id) ?? 0,
       withSchedule: scheduled.get(school.id) ?? 0,
+      failedPastes: failed.get(school.id) ?? 0,
     };
   });
 
@@ -132,6 +160,7 @@ export async function getAdminStats(): Promise<AdminStats | null> {
       beta: true,
       users: count,
       withSchedule: scheduled.get(schoolId) ?? 0,
+      failedPastes: failed.get(schoolId) ?? 0,
     });
   }
 
