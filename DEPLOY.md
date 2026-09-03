@@ -52,8 +52,18 @@ every save fails against the live schema.
 
 ```bash
 psql "$DATABASE_URL" -f scripts/migrate-schools.sql
-npm run db:push          # should now report no changes
+npm run db:push          # read the prompts — see the warning below
 ```
+
+> **`db:push` is not safe to run blind on this database.** On 2 Sep 2026 it
+> proposed adding a `meetings_unique_slot` constraint that **already exists**,
+> and offered to *truncate `meetings`* — every saved schedule in the product —
+> to make room for it. There were no duplicate slots; drizzle-kit's
+> introspection simply failed to match a constraint that was already there.
+>
+> It is still the right tool for a fresh database. On this one, read every
+> prompt, and never pass `--force`. For an additive change, prefer the explicit
+> SQL route in *Adding a table by hand* below.
 
 It is idempotent and it keeps every existing row: each one is stamped
 `waterloo`, and section identity carries over unchanged because Quest's class
@@ -71,15 +81,15 @@ and press Run. The transaction wrapper is what makes that safe: a web editor
 that mangles the paste produces a syntax error and a rollback, never a
 half-applied schema.
 
-### The `paste_samples` table — run before merging
+### The `paste_samples` table — done
 
-Adds one table, which stores the pastes the parser could not read at a beta
-school. Nothing existing reads it, so `db:push` is enough on its own — there is
-no data to backfill and no constraint to replace:
+**Already applied to production, on 2 Sep 2026.** `npx vite-node
+scripts/pull-samples.ts` now answers "No stored samples" rather than
+`relation "paste_samples" does not exist`, which is how you tell.
 
-```bash
-npm run db:push
-```
+It was created by hand rather than with `db:push`, for the reason in the
+warning above — push wanted to truncate `meetings` on the way past. See
+*Adding a table by hand* below for the shape that was used.
 
 **Getting the order wrong here is not the outage the schools migration was.**
 Worth saying plainly, because the rule above ("the migration goes first and the
@@ -389,9 +399,11 @@ whitespace. Paste the bare value anyway.
 ### The database
 
 **Already done for this project.** A Neon project named `honk` exists, `.neon`
-in the repo root pins the org and project ids, and `npm run db:push` has been
-run against it — all nine tables are live. `.env.local` holds the pulled
-`DATABASE_URL` and is gitignored.
+in the repo root pins the org and project ids, and the schema is live —
+thirteen tables as of 2 Sep 2026. The first nine came from `db:push`; the four
+since (`study_groups`, `study_group_members`, `paste_samples`, and the indexes
+on them) were added by hand, for the reason in the warning further up.
+`.env.local` holds the pulled `DATABASE_URL` and is gitignored.
 
 To repeat this on a fresh machine, or for a second environment:
 
@@ -407,9 +419,49 @@ small pool per instance, so an unpooled string will exhaust connections as soon
 as more than a handful of people are on at once.
 
 `db:push` is `drizzle-kit push`, which diffs the schema straight onto the
-database. It is the right tool for standing this up now. Once real students
-have rows in there, switch to generated migrations (`npm run db:generate`,
-committed to the repo) so you can review a change before it runs.
+database. It is the right tool for standing an empty one up, and it stops being
+the right tool the moment there are rows worth keeping: its diff is a guess
+about what the database already has, and when that guess is wrong it offers to
+delete a table to resolve the difference. It has already been wrong once here —
+see the warning under *The steps, for the next time*.
+
+Once real students have rows in there, switch to generated migrations
+(`npm run db:generate`, committed to the repo) so you can read a change before
+it runs.
+
+### Adding a table by hand
+
+For a purely additive change this is shorter than arguing with the diff, and it
+cannot propose anything you did not write. Two things to know: `drizzle-kit`
+does not read `.env.local`, so export `DATABASE_URL` yourself if you use it at
+all; and `postgres.js` rejects a multi-statement `unsafe()` with
+`UNSAFE_TRANSACTION`, so issue one statement per call inside the transaction.
+
+```ts
+import { getSql } from "../src/lib/db";
+const sql = getSql();
+
+await sql.begin(async (tx) => {
+  await tx.unsafe(`create table if not exists paste_samples (
+    id serial primary key,
+    school_id text not null,
+    parser text not null,
+    outcome text not null,
+    course_count integer not null default 0,
+    warnings jsonb not null default '[]'::jsonb,
+    raw_text text not null,
+    created_at timestamptz not null default now()
+  )`);
+  await tx.unsafe(
+    `create index if not exists paste_samples_school_idx on paste_samples (school_id)`,
+  );
+});
+```
+
+Then check it against `db/schema.ts` by reading
+`information_schema.columns` back, rather than assuming the two agree.
+`study_groups`, `study_group_members` and `paste_samples` were all added this
+way.
 
 ### Running out of codes
 
@@ -637,3 +689,11 @@ Production**. Instant, and it does not touch the database.
 
 Schema changes are the exception: `db:push` is not reversible, so take a Neon
 branch before any schema change once you have real users.
+
+```bash
+npx neonctl branches create --project-id <id> --name pre-migration
+```
+
+That is a real safety net and not a ceremony — push has already offered to
+truncate a table on this database once. A branch is a copy you can read the old
+rows back out of; a truncate you agreed to at a prompt is not.
